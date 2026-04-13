@@ -1,0 +1,14 @@
+[project]
+name = "snake-rl"
+version = "0.1.0"
+description = "TBA"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gymnasium>=1.2.3",
+    "ipykernel>=7.2.0",
+    "numpy>=2.4.4",
+    "pygame>=2.6.1",
+    "rich>=14.3.3",
+    "tqdm>=4.67.3",
+]
