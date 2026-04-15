@@ -1,4 +1,5 @@
 from enum import IntEnum, Enum
+from typing import Tuple, TypedDict
 
 
 class RenderMode(str, Enum):
@@ -26,6 +27,7 @@ DIR_OFFSETS = {
     Direction.LEFT: (0, -1),
 }
 
+
 class GridType(IntEnum):
     EMPTY = 0
     HEAD = 1
@@ -45,3 +47,20 @@ class DeathReason(str, Enum):
     SELF = "self"
     COMPLETE = "complete"
     TRUNCATED = "truncated"
+
+
+class RenderOptions(TypedDict, total=False):
+    cell_size: int
+    render_fps: int
+    agent_color: Tuple[int, int, int]
+
+
+class RewardOptions(TypedDict, total=False):
+    reward_apple: float
+    reward_step: float
+    reward_loop_penalty: float
+    reward_complete: float
+    reward_death_wall: float
+    reward_death_self: float
+    reward_shaping_closer: float
+    reward_shaping_further: float

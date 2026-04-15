@@ -3,7 +3,7 @@ import os
 import pickle
 from typing import Optional
 from agents.base import Agent
-from core.env.enums import Action
+from core.env.types import Action
 
 
 class QLearningAgent(Agent):

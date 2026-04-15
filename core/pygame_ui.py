@@ -1,8 +1,8 @@
 import os
 import pygame
 from typing import Optional
-from core.env.core import SnakeEngine
-from core.env.enums import DIR_OFFSETS
+from core.env.core import SnakeEnv
+from core.env.types import DIR_OFFSETS
 
 BG_COLOR = (15, 23, 42)
 GRID_COLOR = (30, 41, 59)
@@ -11,8 +11,9 @@ DEFAULT_BODY_COLOR = (52, 211, 153)
 APPLE_COLOR = (244, 63, 94)
 OBST_COLOR = (100, 116, 139)
 SEGMENT_MARGIN = 2
-TAIL_ALPHA = 0.75
+TAIL_ALPHA = 0.5
 JETBRAINS_FONT_SIZE = 16
+
 
 class PygameUI:
     def __init__(
@@ -87,7 +88,7 @@ class PygameUI:
                         return False
             self.clock.tick(self.fps)  # pyright: ignore[reportOptionalMemberAccess]
 
-    def handle_events(self, engine: SnakeEngine) -> bool:
+    def handle_events(self, env: SnakeEnv) -> bool:
         for event in pygame.event.get():
             if event.type == pygame.QUIT and self.confirm_exit():
                 return False
@@ -104,14 +105,14 @@ class PygameUI:
                         event.pos[1] // self.cell_size,
                     )
                     if b1:
-                        engine.add_obstacle((r, c))
+                        env.add_obstacle((r, c))
                     if b3:
-                        engine.add_apple((r, c))
+                        env.add_apple((r, c))
         return True
 
-    def _draw_grid(self, screen, engine):
-        for r in range(engine.height):
-            for c in range(engine.width):
+    def _draw_grid(self, screen, env):
+        for r in range(env.height):
+            for c in range(env.width):
                 pygame.draw.rect(
                     screen,
                     GRID_COLOR,
@@ -124,20 +125,20 @@ class PygameUI:
                     1,
                 )
 
-    def _draw_obstacles(self, screen, engine):
-        for r, c in engine.obstacles:
+    def _draw_obstacles(self, screen, env):
+        for r, c in env.obstacles:
             screen.blit(
                 self.obst_surf, (c * self.cell_size + 1, r * self.cell_size + 1)
             )
 
-    def _draw_apples(self, screen, engine):
+    def _draw_apples(self, screen, env):
         time_ms = pygame.time.get_ticks()
         ripple_progress = (time_ms % 1000) / 1000.0
         base_hs = self.cell_size // 4
         ripple_hs = int(base_hs + ripple_progress * (self.cell_size // 2))
         alpha = int(255 * (1.0 - ripple_progress))
 
-        for r, c in engine.apples:
+        for r, c in env.apples:
             cx, cy = (
                 c * self.cell_size + self.cell_size // 2,
                 r * self.cell_size + self.cell_size // 2,
@@ -168,8 +169,8 @@ class PygameUI:
             )
             screen.blit(ripple_surf, (cx - self.cell_size, cy - self.cell_size))
 
-    def _draw_snake(self, screen, engine):
-        snake = engine.snake
+    def _draw_snake(self, screen, env):
+        snake = env.snake
         if not snake.alive:
             return
 
@@ -222,14 +223,14 @@ class PygameUI:
             gap_surf.fill((*color, alpha))
             screen.blit(gap_surf, (gx, gy))
 
-    def _draw_metrics(self, screen, engine, total_rewards):
-        metrics_y = engine.height * self.cell_size
+    def _draw_metrics(self, screen, env, total_rewards):
+        metrics_y = env.height * self.cell_size
         pygame.draw.rect(
             screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height)
         )
 
-        snake, reward = engine.snake, total_rewards or 0.0
-        stats = f"Apples: {len(snake.body) - 3} | Reward: {reward:.1f}"
+        snake, reward = env.snake, total_rewards or 0.0
+        stats = f"Steps: {env.current_step} | Snake Length: {len(snake.body)} | Reward: {reward:.1f}"
         if not snake.alive:
             stats = f"DEAD | Reward: {reward:.1f}"
 
@@ -240,19 +241,19 @@ class PygameUI:
             (10 + prefix_surf.get_width(), metrics_y + 10),
         )
 
-    def render(self, engine: SnakeEngine, total_rewards: Optional[float] = None):
+    def render(self, env: SnakeEnv, total_rewards: Optional[float] = None):
         if getattr(self, "screen", None) is None:
-            self.init_screen(engine.width, engine.height)
+            self.init_screen(env.width, env.height)
 
         screen = self.screen
         assert screen is not None
 
         screen.fill(BG_COLOR)
 
-        self._draw_grid(screen, engine)
-        self._draw_obstacles(screen, engine)
-        self._draw_apples(screen, engine)
-        self._draw_snake(screen, engine)
+        self._draw_grid(screen, env)
+        self._draw_obstacles(screen, env)
+        self._draw_apples(screen, env)
+        self._draw_snake(screen, env)
 
         if self.paused:
             screen.blit(
@@ -264,7 +265,7 @@ class PygameUI:
                 (10, 10),
             )
 
-        self._draw_metrics(screen, engine, total_rewards)
+        self._draw_metrics(screen, env, total_rewards)
 
         pygame.display.flip()
         self.clock.tick(self.fps)  # pyright: ignore[reportOptionalMemberAccess]

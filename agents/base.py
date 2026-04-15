@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import os
 from typing import Optional
 import numpy as np
-from core.env.enums import Action
+from core.env.types import Action
 
 
 class Agent(ABC):

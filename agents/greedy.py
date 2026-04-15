@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Dict, Any, Optional
 from agents.base import Agent
-from core.env.enums import Action, Direction
+from core.env.types import Action, Direction
 
 
 class GreedyAgent(Agent):

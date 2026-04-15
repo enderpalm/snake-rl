@@ -1,6 +1,7 @@
-from core.env.enums import RenderMode
+from core.env.types import RenderMode
 from agents.greedy import GreedyAgent
 from core.utils import evaluate_agent
+
 
 def run_test():
     agent = GreedyAgent()
@@ -10,8 +11,9 @@ def run_test():
         num_apples=2,
         num_episodes=3,
         render_mode=RenderMode.HUMAN,
-        seed=67
+        seed=67,
     )
+
 
 if __name__ == "__main__":
     run_test()

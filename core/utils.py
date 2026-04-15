@@ -7,8 +7,8 @@ from typing import Tuple
 
 from gymnasium.vector import SyncVectorEnv
 from agents.base import Agent
-from core.env.gym_env import RenderOptions, RewardOptions, SnakeEnv
-from core.env.enums import ObsType, RenderMode
+from core.env.core import RenderOptions, RewardOptions, SnakeEnv
+from core.env.types import ObsType, RenderMode
 
 METRIC_PATH = "../artifacts/metrics/"
 
@@ -114,8 +114,8 @@ def evaluate_agent(
                             )
 
                         # Re-sample boundaries for internal env
-                        env.envs[i].engine.num_apples = sample(num_apples)
-                        env.envs[i].engine.num_obstacles = sample(num_obstacles)
+                        env.envs[i].num_apples = sample(num_apples)
+                        env.envs[i].num_obstacles = sample(num_obstacles)
 
                         completed += 1
 
@@ -139,6 +139,7 @@ def evaluate_agent(
             "avg": float(np.mean(lst)) if lst else 0.0,
             "max": float(np.max(lst)) if lst else 0.0,
         }
+
     stats = {k: agg(v) for k, v in metrics.items()}
 
     # Print Table
