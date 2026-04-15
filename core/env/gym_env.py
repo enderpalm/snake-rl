@@ -5,7 +5,14 @@ import numpy as np
 from typing import Optional, Dict, Any, Tuple, TypedDict
 
 from core.env.core import SnakeEngine
-from core.env.enums import Direction, GridType, ObsType, RenderMode, DeathReason
+from core.env.enums import (
+    Direction,
+    GridType,
+    ObsType,
+    RenderMode,
+    DeathReason,
+    DIR_OFFSETS,
+)
 from core.pygame_ui import PygameUI
 
 
@@ -25,8 +32,8 @@ class RewardOptions(TypedDict, total=False):
     reward_shaping_closer: float
     reward_shaping_further: float
 
-class SnakeEnv(gym.Env):
 
+class SnakeEnv(gym.Env):
     def __init__(
         self,
         render_mode: Optional[RenderMode] = None,
@@ -38,6 +45,7 @@ class SnakeEnv(gym.Env):
         seed: Optional[int] = None,
         render_options: Optional[RenderOptions] = None,
         reward_options: Optional[RewardOptions] = None,
+        max_steps: int = 2000,
     ):
 
         super().__init__()
@@ -45,6 +53,8 @@ class SnakeEnv(gym.Env):
         self.height = height
         self.render_mode = render_mode
         self.obs_type = obs_type
+        self.max_steps = max_steps
+        self.current_step = 0
 
         from collections import deque
 
@@ -66,14 +76,14 @@ class SnakeEnv(gym.Env):
         if self.render_mode == RenderMode.HUMAN:
             opts = render_options or {}
             self.ui = PygameUI(
-                cell_size=opts.get("cell_size", 30),
-                fps=opts.get("render_fps", 15),
+                cell_size=opts.get("cell_size", 40),
+                fps=opts.get("render_fps", 30),
                 agent_color=opts.get("agent_color"),
             )
             self.ui.init_screen(width, height)
 
-        # Action space: 0=UP, 1=RIGHT, 2=DOWN, 3=LEFT (Map to Direction enum)
-        self.action_space = spaces.Discrete(4)
+        # Action space: 0=Left, 1=Straight, 2=Right (Relative to snake direction)
+        self.action_space = spaces.Discrete(3)
 
         # Observation space
         if self.obs_type == ObsType.VECTOR_11:
@@ -81,12 +91,16 @@ class SnakeEnv(gym.Env):
         elif self.obs_type == ObsType.FULL_GRID:  # very crude for now :(
             # Image output: shape (height, width, channels) or (channels, h, w) for PyTorch.
             # Using standard (Channels, Height, Width) for CNNs: C=3 (Snake, Foods, Obstacles)
-            self.observation_space = spaces.Box(low=0, high=255, shape=(3, height, width), dtype=np.uint8)
+            self.observation_space = spaces.Box(
+                low=0, high=255, shape=(3, height, width), dtype=np.uint8
+            )
         elif self.obs_type == ObsType.ALL:
             self.observation_space = spaces.Dict(
                 {
                     "vector": spaces.MultiBinary(11),
-                    "grid": spaces.Box(low=0, high=255, shape=(3, height, width), dtype=np.uint8),
+                    "grid": spaces.Box(
+                        low=0, high=255, shape=(3, height, width), dtype=np.uint8
+                    ),
                 }
             )
         else:
@@ -97,7 +111,10 @@ class SnakeEnv(gym.Env):
         self.apples_eaten = 0
 
     def _get_obs(self) -> Any:
-        vec, grid = self._extract_11_dim_vector(self.engine), self._extract_full_grid(self.engine)
+        vec, grid = (
+            self._extract_11_dim_vector(self.engine),
+            self._extract_full_grid(self.engine),
+        )
         if self.obs_type == ObsType.VECTOR_11:
             return vec
         if self.obs_type == ObsType.FULL_GRID:
@@ -108,10 +125,12 @@ class SnakeEnv(gym.Env):
     def _extract_11_dim_vector(self, engine) -> np.ndarray:
         snake = engine.snake
         r, c = snake.body[0]
-        dy, dx = snake.dir.y, snake.dir.x
+        dy, dx = DIR_OFFSETS[snake.dir]
 
         def is_collision(pr, pc):
-            return not (0 <= pr < engine.height and 0 <= pc < engine.width) or engine.grid[pr, pc] in (
+            return not (
+                0 <= pr < engine.height and 0 <= pc < engine.width
+            ) or engine.grid[pr, pc] in (
                 GridType.OBSTACLE,
                 GridType.BODY,
                 GridType.HEAD,
@@ -121,10 +140,18 @@ class SnakeEnv(gym.Env):
 
         return np.array(
             [
-                is_collision(r + dy, c + dx),
-                is_collision(r + dx, c - dy),
-                is_collision(r - dx, c + dy),
-                *(snake.dir == d for d in (Direction.LEFT, Direction.RIGHT, Direction.UP, Direction.DOWN)),
+                is_collision(r - dx, c + dy),  # LEFT
+                is_collision(r + dy, c + dx),  # STRAIGHT
+                is_collision(r + dx, c - dy),  # RIGHT
+                *(
+                    snake.dir == d
+                    for d in (
+                        Direction.LEFT,
+                        Direction.RIGHT,
+                        Direction.UP,
+                        Direction.DOWN,
+                    )
+                ),
                 apple[1] < c,
                 apple[1] > c,
                 apple[0] < r,
@@ -149,12 +176,16 @@ class SnakeEnv(gym.Env):
             "engine_state": self.engine.clone(),
         }
 
-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[Any, dict]:
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> Tuple[Any, dict]:
         super().reset(seed=seed, options=options)
 
         if options:
             self.engine.num_apples = options.get("num_apples", self.engine.num_apples)
-            self.engine.num_obstacles = options.get("num_obstacles", self.engine.num_obstacles)
+            self.engine.num_obstacles = options.get(
+                "num_obstacles", self.engine.num_obstacles
+            )
 
         self.engine.reset()
         self.recent_positions.clear()
@@ -162,6 +193,7 @@ class SnakeEnv(gym.Env):
         self.last_death_reason = None
         self.total_rewards = 0.0
         self.apples_eaten = 0
+        self.current_step = 0
 
         obs = self._get_obs()
         info = self._get_info()
@@ -171,22 +203,31 @@ class SnakeEnv(gym.Env):
         dist_before = 0
         if len(self.engine.apples) > 0:
             head = self.engine.snake.body[0]
-            dist_before = min(abs(head[0] - r) + abs(head[1] - c) for r, c in self.engine.apples)
+            dist_before = min(
+                abs(head[0] - r) + abs(head[1] - c) for r, c in self.engine.apples
+            )
 
-        res = self.engine.step(action)
+        # Convert relative action (0=Left, 1=Straight, 2=Right) to absolute direction
+        abs_action = (self.engine.snake.dir + action - 1) % 4
+        res = self.engine.step(abs_action)
         reward, death = res["rewards"], res["deaths"]
 
         terminated = not self.engine.snake.alive or self.engine.done
-        self.last_death_reason = death if not self.engine.snake.alive else self.last_death_reason
+        self.last_death_reason = (
+            death if not self.engine.snake.alive else self.last_death_reason
+        )
 
         # Apply reward shaping natively
         if reward == 0 and not terminated and len(self.engine.apples) > 0:
             head = self.engine.snake.body[0]
-            dist_after = min(abs(head[0] - r) + abs(head[1] - c) for r, c in self.engine.apples)
-            reward += (
-                self.engine.REWARD_SHAPING_CLOSER if dist_after < dist_before else self.engine.REWARD_SHAPING_FURTHER
+            dist_after = min(
+                abs(head[0] - r) + abs(head[1] - c) for r, c in self.engine.apples
             )
-
+            reward += (
+                self.engine.REWARD_SHAPING_CLOSER
+                if dist_after < dist_before
+                else self.engine.REWARD_SHAPING_FURTHER
+            )
             # Loop penalty
             if head in self.recent_positions:
                 reward += getattr(self.engine, "REWARD_LOOP_PENALTY", -0.25)
@@ -196,8 +237,13 @@ class SnakeEnv(gym.Env):
 
         self.total_rewards += reward
         self.apples_eaten += reward > 2.0
+        self.current_step += 1
 
-        return self._get_obs(), reward, terminated, False, self._get_info()
+        truncated = self.current_step >= self.max_steps
+        if truncated and self.last_death_reason is None:
+            self.last_death_reason = DeathReason.TRUNCATED
+
+        return self._get_obs(), reward, terminated, truncated, self._get_info()
 
     def _close_ui_and_exit(self):
         print("UI closed by user.")

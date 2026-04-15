@@ -1,36 +1,49 @@
 import numpy as np
 from typing import Dict, Any, Optional
 from agents.base import Agent
-from core.env.enums import Direction
+from core.env.enums import Action, Direction
 
 
 class GreedyAgent(Agent):
-    """
-    Nerfed greedy agent that only uses the 11-dimensional vector state
-    to make decisions, matching the "legally blind" Q-learning agent's
-    observation space exactly.
-    """
-
     def __init__(self):
         self.training = False
 
-    def act(self, state: np.ndarray, info: Optional[Dict[str, Any]] = None) -> Direction:
+    def _change_dir(self, current_dir: Direction, action: Action) -> Direction:
+        return Direction((current_dir.value + action.value - 1) % 4)
+
+    def act(self, state: np.ndarray, info: Optional[Dict[str, Any]] = None) -> Action:
         if len(state) != 11:
-            return Direction.UP  # Fallback
+            return Action.STRAIGHT
 
-        # Extract current direction: [LEFT, RIGHT, UP, DOWN] translates to [3, 1, 0, 2]
-        current_dir = [3, 1, 0, 2][np.argmax(state[3:7])]
+        safe_actions = [Action(i) for i in range(3) if not state[i]]
+        if not safe_actions:
+            return Action.STRAIGHT
 
-        # Safe directions (state[0..2] = danger straight, right, left)
-        possible_dirs = [current_dir, (current_dir + 1) % 4, (current_dir - 1) % 4]
-        safe_dirs = [d for i, d in enumerate(possible_dirs) if not state[i]]
+        current_dir = [Direction.LEFT, Direction.RIGHT, Direction.UP, Direction.DOWN][
+            np.argmax(state[3:7])
+        ]
+        food_goals = [
+            (7, Direction.LEFT),
+            (8, Direction.RIGHT),
+            (9, Direction.UP),
+            (10, Direction.DOWN),
+        ]
 
-        if not safe_dirs:
-            return Direction(current_dir)
+        for bit, tgt_dir in food_goals:
+            if state[bit]:
+                for a in safe_actions:
+                    if self._change_dir(current_dir, a) == tgt_dir:
+                        return a
 
-        # Apple priority mapping: UP(bit 9), RIGHT(bit 8), DOWN(bit 10), LEFT(bit 7)
-        for move, bit in zip([0, 1, 2, 3], [9, 8, 10, 7]):
-            if state[bit] and move in safe_dirs:
-                return Direction(move)
+        for bit, tgt_dir in food_goals:
+            if state[bit]:
+                perps = (
+                    (Direction.UP, Direction.DOWN)
+                    if tgt_dir in (Direction.LEFT, Direction.RIGHT)
+                    else (Direction.LEFT, Direction.RIGHT)
+                )
+                for a in safe_actions:
+                    if self._change_dir(current_dir, a) in perps:
+                        return a
 
-        return Direction(safe_dirs[0])
+        return Action.STRAIGHT if Action.STRAIGHT in safe_actions else safe_actions[0]

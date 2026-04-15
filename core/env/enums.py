@@ -1,8 +1,16 @@
 from enum import IntEnum, Enum
 
+
 class RenderMode(str, Enum):
     HUMAN = "human"
     RGB_ARRAY = "rgb_array"
+
+
+class Action(IntEnum):
+    LEFT = 0
+    STRAIGHT = 1
+    RIGHT = 2
+
 
 class Direction(IntEnum):
     UP = 0
@@ -10,33 +18,13 @@ class Direction(IntEnum):
     DOWN = 2
     LEFT = 3
 
-    @property
-    def x(self):
-        return {
-            Direction.UP: 0,
-            Direction.RIGHT: 1,
-            Direction.DOWN: 0,
-            Direction.LEFT: -1,
-        }[self]
 
-    @property
-    def y(self):
-        return {
-            Direction.UP: -1,
-            Direction.RIGHT: 0,
-            Direction.DOWN: 1,
-            Direction.LEFT: 0,
-        }[self]
-
-    @property
-    def opposite(self):
-        return {
-            Direction.UP: Direction.DOWN,
-            Direction.DOWN: Direction.UP,
-            Direction.LEFT: Direction.RIGHT,
-            Direction.RIGHT: Direction.LEFT,
-        }[self]
-
+DIR_OFFSETS = {
+    Direction.UP: (-1, 0),
+    Direction.RIGHT: (0, 1),
+    Direction.DOWN: (1, 0),
+    Direction.LEFT: (0, -1),
+}
 
 class GridType(IntEnum):
     EMPTY = 0
@@ -44,6 +32,7 @@ class GridType(IntEnum):
     APPLE = 2
     BODY = 3
     OBSTACLE = -1
+
 
 class ObsType(Enum):
     VECTOR_11 = "11_dim"
@@ -55,3 +44,4 @@ class DeathReason(str, Enum):
     WALL = "wall"
     SELF = "self"
     COMPLETE = "complete"
+    TRUNCATED = "truncated"

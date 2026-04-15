@@ -1,23 +1,26 @@
 import os
 import pygame
-import numpy as np
-from typing import Union, Optional
+from typing import Optional
 from core.env.core import SnakeEngine
-from core.env.enums import Direction
+from core.env.enums import DIR_OFFSETS
 
 BG_COLOR = (15, 23, 42)
 GRID_COLOR = (30, 41, 59)
 TEXT_COLOR = (248, 250, 252)
-DEFAULT_BODY_COLOR = (52, 211, 153) 
+DEFAULT_BODY_COLOR = (52, 211, 153)
 APPLE_COLOR = (244, 63, 94)
 OBST_COLOR = (100, 116, 139)
 SEGMENT_MARGIN = 2
 TAIL_ALPHA = 0.75
 JETBRAINS_FONT_SIZE = 16
 
-
 class PygameUI:
-    def __init__(self, cell_size: int = 30, fps: int = 15, agent_color: Optional[tuple[int, int, int]] = None):
+    def __init__(
+        self,
+        cell_size: int = 40,
+        fps: int = 30,
+        agent_color: Optional[tuple[int, int, int]] = None,
+    ):
         self.cell_size = cell_size
         self.fps = fps
         self.agent_color = agent_color if agent_color else DEFAULT_BODY_COLOR
@@ -38,7 +41,9 @@ class PygameUI:
         pygame.display.set_icon(pygame.Surface((1, 1)))
         self.clock = pygame.time.Clock()
 
-        font_path = os.path.join(os.path.dirname(__file__), "../resources/JetBrainsMono-Regular.ttf")
+        font_path = os.path.join(
+            os.path.dirname(__file__), "../resources/JetBrainsMono-Regular.ttf"
+        )
         try:
             self.font = pygame.font.Font(font_path, JETBRAINS_FONT_SIZE)
         except Exception:
@@ -49,17 +54,23 @@ class PygameUI:
         self.obst_surf.fill((20, 30, 50))
         pygame.draw.rect(self.obst_surf, OBST_COLOR, (0, 0, obs_size, obs_size), 1)
         for i in range(-obs_size, obs_size * 2, 8):
-            pygame.draw.line(self.obst_surf, OBST_COLOR, (i, 0), (i + obs_size, obs_size), 3)
+            pygame.draw.line(
+                self.obst_surf, OBST_COLOR, (i, 0), (i + obs_size, obs_size), 3
+            )
 
     def confirm_exit(self) -> bool:
         if not getattr(self, "screen", None):
             return True
 
-        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay = pygame.Surface(
+            (self.screen_width, self.screen_height), pygame.SRCALPHA
+        )
         overlay.fill((0, 0, 0, 180))
 
         text_surf = self.font.render("Exit game? (Y/N)", True, TEXT_COLOR)
-        text_rect = text_surf.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+        text_rect = text_surf.get_rect(
+            center=(self.screen_width // 2, self.screen_height // 2)
+        )
         overlay.blit(text_surf, text_rect)
 
         self.screen.blit(overlay, (0, 0))  # pyright: ignore[reportOptionalMemberAccess]
@@ -82,10 +93,16 @@ class PygameUI:
                 return False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 self.paused = not self.paused
-            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION) and self.paused:
+            elif (
+                event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION)
+                and self.paused
+            ):
                 b1, _, b3 = pygame.mouse.get_pressed()
                 if b1 or b3:
-                    c, r = event.pos[0] // self.cell_size, event.pos[1] // self.cell_size
+                    c, r = (
+                        event.pos[0] // self.cell_size,
+                        event.pos[1] // self.cell_size,
+                    )
                     if b1:
                         engine.add_obstacle((r, c))
                     if b3:
@@ -96,12 +113,22 @@ class PygameUI:
         for r in range(engine.height):
             for c in range(engine.width):
                 pygame.draw.rect(
-                    screen, GRID_COLOR, (c * self.cell_size, r * self.cell_size, self.cell_size, self.cell_size), 1
+                    screen,
+                    GRID_COLOR,
+                    (
+                        c * self.cell_size,
+                        r * self.cell_size,
+                        self.cell_size,
+                        self.cell_size,
+                    ),
+                    1,
                 )
 
     def _draw_obstacles(self, screen, engine):
         for r, c in engine.obstacles:
-            screen.blit(self.obst_surf, (c * self.cell_size + 1, r * self.cell_size + 1))
+            screen.blit(
+                self.obst_surf, (c * self.cell_size + 1, r * self.cell_size + 1)
+            )
 
     def _draw_apples(self, screen, engine):
         time_ms = pygame.time.get_ticks()
@@ -111,12 +138,24 @@ class PygameUI:
         alpha = int(255 * (1.0 - ripple_progress))
 
         for r, c in engine.apples:
-            cx, cy = c * self.cell_size + self.cell_size // 2, r * self.cell_size + self.cell_size // 2
+            cx, cy = (
+                c * self.cell_size + self.cell_size // 2,
+                r * self.cell_size + self.cell_size // 2,
+            )
             pygame.draw.polygon(
-                screen, APPLE_COLOR, [(cx, cy - base_hs), (cx + base_hs, cy), (cx, cy + base_hs), (cx - base_hs, cy)]
+                screen,
+                APPLE_COLOR,
+                [
+                    (cx, cy - base_hs),
+                    (cx + base_hs, cy),
+                    (cx, cy + base_hs),
+                    (cx - base_hs, cy),
+                ],
             )
 
-            ripple_surf = pygame.Surface((self.cell_size * 2, self.cell_size * 2), pygame.SRCALPHA)
+            ripple_surf = pygame.Surface(
+                (self.cell_size * 2, self.cell_size * 2), pygame.SRCALPHA
+            )
             pygame.draw.polygon(
                 ripple_surf,
                 (*APPLE_COLOR, alpha),
@@ -141,14 +180,17 @@ class PygameUI:
         for i in reversed(range(slen)):
             r, c = snake.body[i]
             alpha = int(255 * (1.0 - (i / max(1, slen - 1)) * (1.0 - TAIL_ALPHA)))
-            x, y = c * self.cell_size + SEGMENT_MARGIN, r * self.cell_size + SEGMENT_MARGIN
+            x, y = (
+                c * self.cell_size + SEGMENT_MARGIN,
+                r * self.cell_size + SEGMENT_MARGIN,
+            )
 
             seg_surf = pygame.Surface((w, h), pygame.SRCALPHA)
             seg_surf.fill((*color, alpha))
 
             if i == 0:
                 cx, cy, s = w / 2.0, h / 2.0, w / 3.0
-                dx, dy = snake.dir.x, snake.dir.y
+                dy, dx = DIR_OFFSETS[snake.dir]
                 pts = [
                     (cx + dx * (s / 2.0), cy + dy * (s / 2.0)),
                     (cx - dx * (s / 2.0) - dy * s, cy - dy * (s / 2.0) + dx * s),
@@ -159,7 +201,9 @@ class PygameUI:
             screen.blit(seg_surf, (x, y))
 
             if i > 0:
-                self._draw_snake_connections(screen, r, c, snake.body[i - 1], x, y, w, h, color, alpha)
+                self._draw_snake_connections(
+                    screen, r, c, snake.body[i - 1], x, y, w, h, color, alpha
+                )
 
     def _draw_snake_connections(self, screen, r, c, prev_pos, x, y, w, h, color, alpha):
         pr, pc = prev_pos
@@ -180,7 +224,9 @@ class PygameUI:
 
     def _draw_metrics(self, screen, engine, total_rewards):
         metrics_y = engine.height * self.cell_size
-        pygame.draw.rect(screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height))
+        pygame.draw.rect(
+            screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height)
+        )
 
         snake, reward = engine.snake, total_rewards or 0.0
         stats = f"Apples: {len(snake.body) - 3} | Reward: {reward:.1f}"
@@ -189,7 +235,10 @@ class PygameUI:
 
         prefix_surf = self.font.render("Agent: ", True, self.agent_color)
         screen.blit(prefix_surf, (10, metrics_y + 10))
-        screen.blit(self.font.render(stats, True, TEXT_COLOR), (10 + prefix_surf.get_width(), metrics_y + 10))
+        screen.blit(
+            self.font.render(stats, True, TEXT_COLOR),
+            (10 + prefix_surf.get_width(), metrics_y + 10),
+        )
 
     def render(self, engine: SnakeEngine, total_rewards: Optional[float] = None):
         if getattr(self, "screen", None) is None:
@@ -207,7 +256,11 @@ class PygameUI:
 
         if self.paused:
             screen.blit(
-                self.font.render("PAUSED (L-Click: Obstacle, R-Click: Apple, Space: Resume)", True, TEXT_COLOR),
+                self.font.render(
+                    "PAUSED (L-Click: Obstacle, R-Click: Apple, Space: Resume)",
+                    True,
+                    TEXT_COLOR,
+                ),
                 (10, 10),
             )
 

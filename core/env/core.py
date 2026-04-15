@@ -1,7 +1,7 @@
 import numpy as np
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional
 from collections import deque
-from core.env.enums import Direction, GridType, DeathReason
+from core.env.enums import Direction, GridType, DeathReason, DIR_OFFSETS
 
 
 class Snake:
@@ -13,8 +13,9 @@ class Snake:
     ):
         self.dir = dir
         self.alive = True
+        dy, dx = DIR_OFFSETS[dir]
         self.body: deque[Tuple[int, int]] = deque(
-            (start_pos[0] - dir.y * i, start_pos[1] - dir.x * i) for i in range(length)
+            (start_pos[0] - dy * i, start_pos[1] - dx * i) for i in range(length)
         )
 
     def clone(self) -> "Snake":
@@ -51,7 +52,9 @@ class SnakeEngine:
         self.snake: Optional[Snake] = None
         self.apples: set[Tuple[int, int]] = set()
         self.obstacles: set[Tuple[int, int]] = set()
-        self.grid = np.full((self.height, self.width), fill_value=GridType.EMPTY, dtype=np.int8)
+        self.grid = np.full(
+            (self.height, self.width), fill_value=GridType.EMPTY, dtype=np.int8
+        )
         self.state_step, self.done = 0, False
 
     def reset(self) -> None:
@@ -77,7 +80,9 @@ class SnakeEngine:
         empty = list(zip(*np.where(self.grid == GridType.EMPTY)))
         if not empty:
             return
-        for idx in self.np_random.choice(len(empty), min(count, len(empty)), replace=False):
+        for idx in self.np_random.choice(
+            len(empty), min(count, len(empty)), replace=False
+        ):
             r, c = empty[idx]
             item_set.add((r, c))
             self.grid[r, c] = grid_type
@@ -88,9 +93,15 @@ class SnakeEngine:
     def _spawn_obstacles(self, count: int) -> None:
         self._spawn_items(count, self.obstacles, GridType.OBSTACLE)
 
-    def _add_item_dyn(self, pos: Tuple[int, int], item_set: set, grid_type: GridType) -> bool:
+    def _add_item_dyn(
+        self, pos: Tuple[int, int], item_set: set, grid_type: GridType
+    ) -> bool:
         r, c = pos
-        if 0 <= r < self.height and 0 <= c < self.width and self.grid[r, c] == GridType.EMPTY:
+        if (
+            0 <= r < self.height
+            and 0 <= c < self.width
+            and self.grid[r, c] == GridType.EMPTY
+        ):
             item_set.add(pos)
             self.grid[r, c] = grid_type
             return True
@@ -116,11 +127,12 @@ class SnakeEngine:
 
         if action is not None:
             new_dir = Direction(action)
-            if new_dir.opposite != snake.dir:
+            if (new_dir + 2) % 4 != snake.dir:
                 snake.dir = new_dir
 
         r, c = snake.body[0]
-        new_head = (r + snake.dir.y, c + snake.dir.x)
+        dy, dx = DIR_OFFSETS[snake.dir]
+        new_head = (r + dy, c + dx)
 
         def _die(reason: DeathReason):
             snake.alive, nonlocal_death[0] = False, reason
@@ -163,14 +175,19 @@ class SnakeEngine:
         death = nonlocal_death[0]
         self.done = not snake.alive
 
-        death_penalties = {DeathReason.WALL: self.REWARD_DEATH_WALL, DeathReason.SELF: self.REWARD_DEATH_SELF}
+        death_penalties = {
+            DeathReason.WALL: self.REWARD_DEATH_WALL,
+            DeathReason.SELF: self.REWARD_DEATH_SELF,
+        }
         if death in death_penalties:
             reward += death_penalties[death]
 
         return {"rewards": reward, "deaths": death}
 
     def clone(self) -> "SnakeEngine":
-        new_engine = SnakeEngine(self.width, self.height, self.num_apples, self.num_obstacles)
+        new_engine = SnakeEngine(
+            self.width, self.height, self.num_apples, self.num_obstacles
+        )
         new_engine.np_random.bit_generator.state = self.np_random.bit_generator.state
         new_engine.snake = self.snake.clone()
         new_engine.apples = set(self.apples)
