@@ -35,15 +35,4 @@ class GreedyAgent(Agent):
                     if self._change_dir(current_dir, a) == tgt_dir:
                         return a
 
-        for bit, tgt_dir in food_goals:
-            if state[bit]:
-                perps = (
-                    (Direction.UP, Direction.DOWN)
-                    if tgt_dir in (Direction.LEFT, Direction.RIGHT)
-                    else (Direction.LEFT, Direction.RIGHT)
-                )
-                for a in safe_actions:
-                    if self._change_dir(current_dir, a) in perps:
-                        return a
-
         return Action.STRAIGHT if Action.STRAIGHT in safe_actions else safe_actions[0]
