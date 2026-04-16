@@ -26,10 +26,8 @@ class QLearningAgent(Agent):
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
 
-    def _obs_to_state(
-        self, obs: np.ndarray
-    ) -> int:  # 11-bit -> int for index in q-table
-        return int("".join(obs.astype(int).astype(str)), 2)
+    def _obs_to_state(self, obs: np.ndarray) -> int:
+        return obs.dot(1 << np.arange(obs.size)[::-1])
 
     def act(self, state: np.ndarray, info: Optional[dict] = None) -> Action:
         if self.rng.random() < self.epsilon:

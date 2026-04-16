@@ -11,7 +11,7 @@ from core.env.core import RenderOptions, RewardOptions, SnakeEnv
 from core.env.types import ObsType, RenderMode
 
 METRIC_PATH = "../artifacts/metrics/"
-
+BREAKER_WIDTH = 60
 
 def save_metrics(logs: list[dict], filepath: str) -> None:
     """Save a list of log dictionaries to a CSV file.
@@ -53,6 +53,7 @@ def evaluate_agent(
     seed: int | None = None,
 ) -> tuple[dict, dict, dict, dict]:
 
+    # For the env to be exactly the same, both num_envs and seed must be the same.
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
@@ -138,22 +139,24 @@ def evaluate_agent(
         return {
             "avg": float(np.mean(lst)) if lst else 0.0,
             "max": float(np.max(lst)) if lst else 0.0,
+            "sd": float(np.std(lst)) if lst else 0.0,
         }
 
     stats = {k: agg(v) for k, v in metrics.items()}
 
     # Print Table
-    print("\n" + "=" * 35)
-    print(f"{'Metric':<15} | {'Average':<8} | {'Max':<8}")
-    print("-" * 35)
+
+    print("\n" + "=" * BREAKER_WIDTH)
+    print(f"{'Metric':<15} | {'Average':<8} | {'Max':<8} | {'Std Dev':<8}")
+    print("-" * BREAKER_WIDTH)
     for name, st in stats.items():
-        print(f"{name.capitalize():<15} | {st['avg']:<8.2f} | {st['max']:<8.2f}")
+        print(f"{name.capitalize():<15} | {st['avg']:<8.2f} | {st['max']:<8.2f} | {st['sd']:<8.2f}")
 
     print("\nDeath Distribution:")
     for reason, count in sorted(death_dist.items(), key=lambda x: -x[1]):
         print(
             f" - {reason.value if hasattr(reason, 'value') else reason}: {count} ({(count / num_episodes) * 100:.1f}%)"
         )
-    print("=" * 35 + "\n")
+    print("=" * BREAKER_WIDTH + "\n")
 
     return stats["rewards"], stats["apples"], stats["steps"], death_dist
