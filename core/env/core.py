@@ -142,6 +142,14 @@ class SnakeEnv(gym.Env):
             r, c = divmod(flat_idx, self.width)
             item_set.add((r, c))
             self.grid[r, c] = grid_type
+    
+    def add_item_dyn(self, pos: Tuple[int, int], grid_type: GridType):
+        if self.grid[pos] == GridType.EMPTY:
+            self.grid[pos] = grid_type
+            if grid_type == GridType.APPLE:
+                self.apples.add(pos)
+            elif grid_type == GridType.OBSTACLE:
+                self.obstacles.add(pos)
 
     def _min_dist_to_apple(self) -> float:
         if not self.apples or not self.snake:
@@ -271,10 +279,9 @@ class SnakeEnv(gym.Env):
                     reward += self.REWARD_COMPLETE
 
         death = nonlocal_death[0]
-        self.done = not snake.alive
+        terminated = not self.snake.alive
 
-        terminated = not self.snake.alive or self.done
-        if not self.snake.alive and not self.last_death_reason:
+        if terminated and not self.last_death_reason:
             self.last_death_reason = death
 
         pure_movement = not hit_apple and not terminated
