@@ -26,9 +26,7 @@ class Snake:
     ):
         self.dir, self.alive = dir, True
         dy, dx = DIR_OFFSETS[dir]
-        self.body: deque[Tuple[int, int]] = deque(
-            (start_pos[0] - dy * i, start_pos[1] - dx * i) for i in range(length)
-        )
+        self.body: deque[Tuple[int, int]] = deque((start_pos[0] - dy * i, start_pos[1] - dx * i) for i in range(length))
 
     def clone(self) -> "Snake":
         new_snake = Snake((0, 0), 1, self.dir)
@@ -68,9 +66,7 @@ class SnakeEnv(gym.Env):
         self.snake: Optional[Snake] = None
         self.apples: set[Tuple[int, int]] = set()
         self.obstacles: set[Tuple[int, int]] = set()
-        self.grid = np.full(
-            (self.height, self.width), fill_value=GridType.EMPTY, dtype=np.int8
-        )
+        self.grid = np.full((self.height, self.width), fill_value=GridType.EMPTY, dtype=np.int8)
 
         self.state_step, self.done = 0, False
         self.current_step, self.recent_positions = 0, deque(maxlen=20)
@@ -100,9 +96,7 @@ class SnakeEnv(gym.Env):
             else spaces.Box(low=0, high=255, shape=(3, height, width), dtype=np.uint8)
         )
 
-    def reset(
-        self, *, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> Tuple[Any, dict]:
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[Any, dict]:
         super().reset(seed=seed, options=options)
         if options:
             self.num_apples = options.get("num_apples", self.num_apples)
@@ -136,26 +130,33 @@ class SnakeEnv(gym.Env):
         empty = np.flatnonzero(self.grid == GridType.EMPTY)
         if empty.size == 0:
             return
-        for flat_idx in self.np_random.choice(
-            empty, min(count, empty.size), replace=False
-        ):
+        for flat_idx in self.np_random.choice(empty, min(count, empty.size), replace=False):
             r, c = divmod(flat_idx, self.width)
             item_set.add((r, c))
             self.grid[r, c] = grid_type
-    
-    def add_item_dyn(self, pos: Tuple[int, int], grid_type: GridType):
-        if self.grid[pos] == GridType.EMPTY:
+
+    def add_item_dyn(self, pos: Tuple[int, int], grid_type: GridType, add: bool = True):
+        if pos in self.snake.body: # pyright: ignore[reportOptionalMemberAccess]
+            return
+
+        if add:
             self.grid[pos] = grid_type
             if grid_type == GridType.APPLE:
                 self.apples.add(pos)
             elif grid_type == GridType.OBSTACLE:
                 self.obstacles.add(pos)
+        elif self.grid[pos] == grid_type:
+            self.grid[pos] = GridType.EMPTY
+            if grid_type == GridType.APPLE:
+                self.apples.remove(pos)
+            elif grid_type == GridType.OBSTACLE:
+                self.obstacles.remove(pos)
 
     def _min_dist_to_apple(self) -> float:
         if not self.apples or not self.snake:
             return 0.0
         r, c = self.snake.body[0]
-        return min(abs(r - ar) + abs(c - ac) for ar, ac in self.apples)
+        return min(abs(r - ar) + abs(c - ac) for ar, ac in self.apples)  # L1 distance
 
     def _get_obs(self) -> Any:
         if self.obs_type == ObsType.FULL_GRID:
@@ -169,6 +170,8 @@ class SnakeEnv(gym.Env):
                 state[2, r, c] = 255
             return state
 
+        # ObsType.VECTOR_11 (Partial)
+
         if not self.snake:
             return np.zeros(11, dtype=np.int8)
 
@@ -176,9 +179,11 @@ class SnakeEnv(gym.Env):
         dy, dx = DIR_OFFSETS[self.snake.dir]
 
         def is_col(pr, pc):
-            return not (0 <= pr < self.height and 0 <= pc < self.width) or self.grid[
-                pr, pc
-            ] in (GridType.OBSTACLE, GridType.BODY, GridType.HEAD)
+            return not (0 <= pr < self.height and 0 <= pc < self.width) or self.grid[pr, pc] in (
+                GridType.OBSTACLE,
+                GridType.BODY,
+                GridType.HEAD,
+            )
 
         apple = next(iter(self.apples)) if self.apples else (r, c)
 
@@ -247,16 +252,8 @@ class SnakeEnv(gym.Env):
                 target in (GridType.BODY, GridType.HEAD)
                 and not (new_head == snake.body[-1] and new_head not in self.apples)
             ):
-                _die(
-                    DeathReason.WALL
-                    if target == GridType.OBSTACLE
-                    else DeathReason.SELF
-                )
-                reward += (
-                    self.REWARD_DEATH_WALL
-                    if target == GridType.OBSTACLE
-                    else self.REWARD_DEATH_SELF
-                )
+                _die(DeathReason.WALL if target == GridType.OBSTACLE else DeathReason.SELF)
+                reward += self.REWARD_DEATH_WALL if target == GridType.OBSTACLE else self.REWARD_DEATH_SELF
             else:
                 snake.body.appendleft(new_head)
                 if len(snake.body) > 1:
@@ -287,9 +284,7 @@ class SnakeEnv(gym.Env):
         pure_movement = not hit_apple and not terminated
         if pure_movement and self.apples:
             reward += (
-                self.REWARD_SHAPING_CLOSER
-                if self._min_dist_to_apple() < dist_before
-                else self.REWARD_SHAPING_FURTHER
+                self.REWARD_SHAPING_CLOSER if self._min_dist_to_apple() < dist_before else self.REWARD_SHAPING_FURTHER
             )
             head = snake.body[0]
             if head in self.recent_positions:

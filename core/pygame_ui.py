@@ -93,10 +93,8 @@ class PygameUI:
                         event.pos[0] // self.cell_size,
                         event.pos[1] // self.cell_size,
                     )
-                    if b1:
-                        env.add_item_dyn((r, c), GridType.OBSTACLE)
-                    if b3:
-                        env.add_item_dyn((r, c), GridType.APPLE)
+                    grid_type = GridType.APPLE if (pygame.key.get_mods() & pygame.KMOD_SHIFT) else GridType.OBSTACLE
+                    env.add_item_dyn((r, c), grid_type, b1)
         return True
 
     def _draw_grid(self, screen, env):
