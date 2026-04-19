@@ -27,6 +27,7 @@ class QLearningAgent(Agent):
         self.epsilon_decay = epsilon_decay
 
     def _obs_to_state(self, obs: np.ndarray) -> int:
+        # Partial obs (11 bits) to state index (0-2047)
         return obs.dot(1 << np.arange(obs.size)[::-1])
 
     def act(self, state: np.ndarray, info: Optional[dict] = None) -> Action:
@@ -56,11 +57,7 @@ class QLearningAgent(Agent):
         self.q_table[state_idx][action] += self.lr * td_error
 
     def train(self, mode: bool = True) -> None:
-        """Called at end of episode to decay exploration rate if mode=True."""
-        if mode:
-            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-        else:
-            self.epsilon = self.epsilon_min
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def save(self, path: str) -> None:
         path = self._modify_path(path)

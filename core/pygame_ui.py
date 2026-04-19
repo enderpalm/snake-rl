@@ -94,7 +94,7 @@ class PygameUI:
                         event.pos[1] // self.cell_size,
                     )
                     grid_type = GridType.APPLE if (pygame.key.get_mods() & pygame.KMOD_SHIFT) else GridType.OBSTACLE
-                    env.add_item_dyn((r, c), grid_type, b1)
+                    env.set_item_dyn((r, c), grid_type, b1)
         return True
 
     def _draw_grid(self, screen, env):
@@ -209,7 +209,7 @@ class PygameUI:
         pygame.draw.rect(screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height))
 
         snake, reward = env.snake, total_rewards or 0.0
-        stats = f"Steps: {env.current_step} | Snake Length: {len(snake.body)} | Reward: {reward:.1f}"
+        stats = f"Steps: {env.step_count} | Snake Length: {len(snake.body)} | Reward: {reward:.1f}"
         if not snake.alive:
             stats = f"DEAD | Reward: {reward:.1f}"
 
@@ -237,7 +237,7 @@ class PygameUI:
         if self.paused:
             screen.blit(
                 self.font.render(
-                    "PAUSED (L-Click: Obstacle, R-Click: Apple, Space: Resume)",
+                    "PAUSED (Obstacle (Shift to Apple), L: Add, R: Remove, Space: Resume)",
                     True,
                     TEXT_COLOR,
                 ),

@@ -1,5 +1,6 @@
 from enum import IntEnum, Enum
 from typing import Tuple, TypedDict
+from dataclasses import dataclass
 
 
 class RenderMode(str, Enum):
@@ -19,6 +20,10 @@ class Direction(IntEnum):
     DOWN = 2
     LEFT = 3
 
+    @property
+    def dir_offset(self) -> Tuple[int, int]:
+        return DIR_OFFSETS[self]
+
 
 DIR_OFFSETS = {
     Direction.UP: (-1, 0),
@@ -36,10 +41,10 @@ class GridType(IntEnum):
     OBSTACLE = -1
 
 
-class ObsType(Enum):
-    VECTOR_11 = "11_dim"
-    FULL_GRID = "full_grid"
-    ALL = "all"
+class ObserveType:
+    FULL = -1
+    VEC_11 = 0
+    # Any positive int > 0 is implicitly treated as a CNN radius
 
 
 class DeathReason(str, Enum):
@@ -49,18 +54,22 @@ class DeathReason(str, Enum):
     TRUNCATED = "truncated"
 
 
+# -------------------------------- TypedDicts -------------------------------- #
+
+
 class RenderOptions(TypedDict, total=False):
     cell_size: int
     render_fps: int
     agent_color: Tuple[int, int, int]
 
 
-class RewardOptions(TypedDict, total=False):
-    reward_apple: float
-    reward_step: float
-    reward_loop_penalty: float
-    reward_complete: float
-    reward_death_wall: float
-    reward_death_self: float
-    reward_shaping_closer: float
-    reward_shaping_further: float
+@dataclass
+class RewardOptions:
+    reward_apple: float = 10.0
+    reward_step: float = -0.01
+    reward_loop_penalty: float = -0.1
+    reward_complete: float = 50.0
+    reward_death_wall: float = -10.0
+    reward_death_self: float = -10.0
+    reward_shaping_closer: float = 0.1
+    reward_shaping_further: float = -0.2
