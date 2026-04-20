@@ -30,32 +30,10 @@ class MCTSAgent(Agent):
             return Action.STRAIGHT
 
         root = TreeNode(state, None, {}, 0, 0.0)
-        for _ in range(1000):
+        for _ in range(500):
             node = select_leaf(root)
             expand(node)
             result = simulate(node)
             backprop(node, result)
 
         return best_action(root)
-
-        # food_goals = [
-        #     (7, Direction.LEFT),
-        #     (8, Direction.RIGHT),
-        #     (9, Direction.UP),
-        #     (10, Direction.DOWN),
-        # ]
-
-        # for bit, tgt_dir in food_goals:
-        #     if state[bit]:
-        #         for a in safe_actions:
-        #             if self._change_dir(current_dir, a) == tgt_dir:
-        #                 return a
-
-        # return Action.STRAIGHT if Action.STRAIGHT in safe_actions else safe_actions[0]
-        # for bit, tgt_dir in food_goals:
-        #     if state[bit]:
-        #         for a in safe_actions:
-        #             if self._change_dir(current_dir, a) == tgt_dir:
-        #                 return a
-
-        # return Action.STRAIGHT if Action.STRAIGHT in safe_actions else safe_actions[0]
