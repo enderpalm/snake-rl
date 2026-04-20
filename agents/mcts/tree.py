@@ -7,11 +7,19 @@ from core.env.types import Action
 
 
 class TreeNode:
-    state: np.ndarray
-    parent: Optional["TreeNode"]
-    children: dict[Action, "TreeNode"]
-    visits: int
-    value: float
+    def __init__(
+        self,
+        state: np.ndarray,
+        parent: Optional["TreeNode"],
+        children: dict[Action, "TreeNode"],
+        visits: int,
+        value: float,
+    ):
+        self.state = state
+        self.parent = parent
+        self.children = children
+        self.visits = visits
+        self.value = value
 
 
 def uct_score(node: TreeNode, parent_visits: int, c: float = 1.41) -> float:
