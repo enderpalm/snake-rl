@@ -24,8 +24,8 @@ class MCTSAgent(Agent):
 
     def __init__(
         self,
-        simulations: int = 20,
-        max_rollout_steps: int = 200,
+        simulations: int = 100,
+        max_rollout_steps: int = 100,
         seed: int | None = None,
         tree_debug_window: bool = False,
     ):
@@ -69,11 +69,6 @@ class MCTSAgent(Agent):
             self._decision_counts["other"] += 1
             return Action.STRAIGHT
 
-        safe_actions = [Action(i) for i in range(3) if not state[i]]
-        if not safe_actions:
-            self._decision_counts["other"] += 1
-            return Action.STRAIGHT
-
         engine = info.get("engine_state") if info else None
         if not isinstance(engine, SnakeEnv) or self.simulations <= 0:
             self._decision_counts["greedy"] += 1
@@ -92,10 +87,4 @@ class MCTSAgent(Agent):
             from agents.mcts.tree_view import mcts_panel_lines
 
             self.last_mcts_panel = mcts_panel_lines(root, chosen)
-        if chosen in safe_actions:
-            return chosen
-        if Action.STRAIGHT in safe_actions:
-            return Action.STRAIGHT
-
-        # random choice in safe_actions
-        return safe_actions[int(self.rng.integers(len(safe_actions)))]
+        return chosen

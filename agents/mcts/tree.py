@@ -59,10 +59,10 @@ class TreeNode:
 
 
 def uct_score(node: TreeNode, parent_visits: int, c: float = 1.41) -> float:
-    """Q(parent, a) = r(parent -> node) + V(node), plus UCB exploration bonus."""
+    """Q(parent, a) = r(parent -> node) + gamma * V(node), plus UCB exploration bonus."""
     if node.visits == 0:
         return float("inf")
-    q = node.step_reward + node.value / node.visits
+    q = node.step_reward + GAMMA * (node.value / node.visits)
     if parent_visits <= 0:
         return q
     return q + c * np.sqrt(np.log(parent_visits) / node.visits)
@@ -86,45 +86,55 @@ def select_leaf(node: TreeNode) -> TreeNode:
 def expand(node: TreeNode) -> TreeNode:
     if _is_terminal(node.env):
         return node
-    obs = obs_mod.observe_vec11(node.env)
-    legal = [Action(i) for i in range(3) if not obs[i]]
-    if not legal:
-        # vec11 didn't give any 'safe' label, try all legal game actions and let SnakeEnv.step decide what actually happens
-        legal = [Action(0), Action(1), Action(2)]
-    for a in legal:
+    # Expand all 3 actions and let SnakeEnv.step decide legality. vec11 marks
+    # tail-chase as unsafe but snake usually survives it (tail moves out), and
+    # pruning those moves traps MCTS in loops near the apple.
+    for a in (Action(0), Action(1), Action(2)):
         e = node.env.clone()
         _, r, _, _, _ = e.step(int(a))
         node.children[a] = TreeNode(e, node, {}, 0, 0.0, step_reward=float(r))
     return node.env.np_random.choice(list(node.children.values()))
 
 
+# Discount factor for returns. With long greedy rollouts, any starting state looks
+# roughly equally good (rollout always eats apples eventually), which swamps the
+# small per-step reward signal and lets MCTS loop near the apple. Discounting
+# pushes far-future rollout gains down so that near-term r(parent -> child)
+# dominates Q, which is exactly what we want.
+GAMMA: float = 0.9
+
+
 def simulate(node: TreeNode, max_rollout_steps: int = 80) -> float:
-    """Greedy rollout, capped for speed (full-episode rollouts are far too slow per simulation)."""
+    """Greedy rollout, capped for speed, discounted so immediate reward dominates."""
     env = node.env.clone()
     if _is_terminal(env):
         return 0.0
     total = 0.0
+    discount = 1.0
     for _ in range(max_rollout_steps):
         obs = obs_mod.observe_vec11(env)
         action = int(_greedy_action_from_obs(obs))
         _, reward, terminated, truncated, _ = env.step(action)
-        total += reward
+        total += discount * reward
+        discount *= GAMMA
         if terminated or truncated:
             break
     return total
 
 
 def backprop(node: TreeNode, result: float) -> None:
-    """Credit each ancestor with the return from its state onwards.
+    """Credit each ancestor with the discounted return from its state onwards.
 
-    Return from node N = step_reward(child_on_path) + return(child_on_path), so as
-    we ascend we add the step_reward of the node we're leaving.
+    Return from node N = step_reward(child_on_path) + gamma * return(child_on_path).
+    Ascending the tree, we fold in this relation step by step.
     """
     g = result
     while node:
         node.visits += 1
         node.value += g
-        g += node.step_reward
+        # Move up: this node's return becomes its parent's next-step return, so the
+        # parent sees step_reward(node) + gamma * g.
+        g = node.step_reward + GAMMA * g
         node = node.parent
 
 
@@ -135,7 +145,7 @@ def best_action(node: TreeNode) -> Action:
     best_key: tuple[int, float] | None = None
     candidates: list[Action] = []
     for action, child in node.children.items():
-        q = (child.step_reward + child.value / child.visits) if child.visits else -1e30
+        q = (child.step_reward + GAMMA * child.value / child.visits) if child.visits else -1e30
         key = (child.visits, q)
         if best_key is None or key > best_key:
             best_key = key
