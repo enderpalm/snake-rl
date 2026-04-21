@@ -122,6 +122,12 @@ def evaluate_agent(
                 )
                 for i in range(num_envs)
             ]
+            if render_mode == RenderMode.HUMAN and num_envs >= 1:
+                setattr(
+                    env.envs[0],
+                    "mcts_panel",
+                    getattr(agent, "last_mcts_panel", None),
+                )
             next_obs, rewards, done, truncs, infos = env.step(actions)
             ep_rewards += rewards
             ep_steps += 1

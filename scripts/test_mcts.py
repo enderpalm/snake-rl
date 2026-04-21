@@ -4,7 +4,7 @@ from core.utils import evaluate_agent
 
 
 def run_test():
-    agent = MCTSAgent()
+    agent = MCTSAgent(tree_debug_window=True)
     evaluate_agent(
         agent,
         num_obstacles=10,

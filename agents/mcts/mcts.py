@@ -27,11 +27,14 @@ class MCTSAgent(Agent):
         simulations: int = 48,
         max_rollout_steps: int = 80,
         seed: int | None = None,
+        tree_debug_window: bool = False,
     ):
         super().__init__(seed=seed)
         self.training = False
         self.simulations = simulations
         self.max_rollout_steps = max_rollout_steps
+        self.tree_debug_window = tree_debug_window
+        self.last_mcts_panel: list[str] | None = None
         self._greedy = GreedyAgent()
         self._decision_counts = {"mcts": 0, "greedy": 0, "other": 0}
 
@@ -61,6 +64,7 @@ class MCTSAgent(Agent):
             self.reset_decision_stats()
 
     def act(self, state: np.ndarray, info: Optional[Dict[str, Any]] = None) -> Action:
+        self.last_mcts_panel = None
         if len(state) != 11:
             self._decision_counts["other"] += 1
             return Action.STRAIGHT
@@ -84,6 +88,10 @@ class MCTSAgent(Agent):
 
         chosen = best_action(root)
         self._decision_counts["mcts"] += 1
+        if self.tree_debug_window:
+            from agents.mcts.tree_view import mcts_panel_lines
+
+            self.last_mcts_panel = mcts_panel_lines(root, chosen)
         if chosen in safe_actions:
             return chosen
         if Action.STRAIGHT in safe_actions:
