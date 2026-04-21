@@ -24,8 +24,8 @@ class MCTSAgent(Agent):
 
     def __init__(
         self,
-        simulations: int = 100,
-        max_rollout_steps: int = 100,
+        simulations: int = 20,
+        max_rollout_steps: int = 200,
         seed: int | None = None,
         tree_debug_window: bool = False,
     ):

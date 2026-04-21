@@ -32,7 +32,7 @@ def mcts_panel_lines(root: TreeNode, chosen: Action | None) -> list[str]:
             line = f"{nm}       —    —       —       —"
         else:
             v, qsum = ch.visits, ch.value
-            mean = qsum / v if v else 0.0
+            mean = (ch.step_reward + qsum / v) if v else 0.0
             u = uct_score(ch, pv) if v else float("inf")
             u_s = "inf" if u == float("inf") else f"{u:.2f}"
             line = f"{nm} {v:4d} {mean:7.3f} {qsum:8.2f} {u_s:>7}"

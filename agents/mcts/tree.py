@@ -47,20 +47,25 @@ class TreeNode:
         children: dict[Action, "TreeNode"],
         visits: int,
         value: float,
+        step_reward: float = 0.0,
     ):
         self.env = env
         self.parent = parent
         self.children = children
         self.visits = visits
         self.value = value
+        # Reward incurred transitioning from parent -> this node (0.0 at root).
+        self.step_reward = step_reward
 
 
 def uct_score(node: TreeNode, parent_visits: int, c: float = 1.41) -> float:
+    """Q(parent, a) = r(parent -> node) + V(node), plus UCB exploration bonus."""
     if node.visits == 0:
         return float("inf")
+    q = node.step_reward + node.value / node.visits
     if parent_visits <= 0:
-        return node.value / node.visits
-    return node.value / node.visits + c * np.sqrt(np.log(parent_visits) / node.visits)
+        return q
+    return q + c * np.sqrt(np.log(parent_visits) / node.visits)
 
 
 def select_leaf(node: TreeNode) -> TreeNode:
@@ -88,8 +93,8 @@ def expand(node: TreeNode) -> TreeNode:
         legal = [Action(0), Action(1), Action(2)]
     for a in legal:
         e = node.env.clone()
-        e.step(int(a))
-        node.children[a] = TreeNode(e, node, {}, 0, 0.0)
+        _, r, _, _, _ = e.step(int(a))
+        node.children[a] = TreeNode(e, node, {}, 0, 0.0, step_reward=float(r))
     return node.env.np_random.choice(list(node.children.values()))
 
 
@@ -101,8 +106,7 @@ def simulate(node: TreeNode, max_rollout_steps: int = 80) -> float:
     total = 0.0
     for _ in range(max_rollout_steps):
         obs = obs_mod.observe_vec11(env)
-        # action = int(_greedy_action_from_obs(obs))
-        action = int(node.env.np_random.integers(3))
+        action = int(_greedy_action_from_obs(obs))
         _, reward, terminated, truncated, _ = env.step(action)
         total += reward
         if terminated or truncated:
@@ -111,21 +115,32 @@ def simulate(node: TreeNode, max_rollout_steps: int = 80) -> float:
 
 
 def backprop(node: TreeNode, result: float) -> None:
+    """Credit each ancestor with the return from its state onwards.
+
+    Return from node N = step_reward(child_on_path) + return(child_on_path), so as
+    we ascend we add the step_reward of the node we're leaving.
+    """
+    g = result
     while node:
         node.visits += 1
-        node.value += result
+        node.value += g
+        g += node.step_reward
         node = node.parent
 
 
 def best_action(node: TreeNode) -> Action:
     if not node.children:
         return Action.STRAIGHT
-    # Avoid Python max() tie-breaking on dict order (often biased toward LEFT).
-    return max(
-        node.children.items(),
-        key=lambda item: (
-            item[1].visits,
-            item[1].value / item[1].visits if item[1].visits else -1e30,
-            item[0] == Action.STRAIGHT,
-        ),
-    )[0]
+    # Prefer most visits, then best mean return; break ties randomly (no STRAIGHT bias).
+    best_key: tuple[int, float] | None = None
+    candidates: list[Action] = []
+    for action, child in node.children.items():
+        q = (child.step_reward + child.value / child.visits) if child.visits else -1e30
+        key = (child.visits, q)
+        if best_key is None or key > best_key:
+            best_key = key
+            candidates = [action]
+        elif key == best_key:
+            candidates.append(action)
+    rng = next(iter(node.children.values())).env.np_random
+    return Action(int(rng.choice(candidates)))
