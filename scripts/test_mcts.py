@@ -12,6 +12,7 @@ def run_test():
         num_episodes=3,
         render_mode=RenderMode.HUMAN,
         seed=67,
+        snapshot_engine_state=True,
     )
 
 
