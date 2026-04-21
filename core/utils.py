@@ -101,6 +101,9 @@ def evaluate_agent(
     env = SyncVectorEnv([env_factory(i) for i in range(num_envs)])
     obs, infos = env.reset(seed=seed)
 
+    if hasattr(agent, "reset_decision_stats"):
+        agent.reset_decision_stats()
+
     metrics = {"rewards": [], "apples": [], "steps": []}
     death_dist = {}
     ep_rewards, ep_steps = np.zeros(num_envs), np.zeros(num_envs)
@@ -178,5 +181,8 @@ def evaluate_agent(
             f" - {reason.value if hasattr(reason, 'value') else reason}: {count} ({(count / num_episodes) * 100:.1f}%)"
         )
     print("=" * BREAKER_WIDTH + "\n")
+
+    if hasattr(agent, "log_decision_stats"):
+        agent.log_decision_stats()
 
     return stats["rewards"], stats["apples"], stats["steps"], death_dist
