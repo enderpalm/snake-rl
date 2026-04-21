@@ -84,6 +84,7 @@ def expand(node: TreeNode) -> TreeNode:
     obs = obs_mod.observe_vec11(node.env)
     legal = [Action(i) for i in range(3) if not obs[i]]
     if not legal:
+        # vec11 didn't give any 'safe' label, try all legal game actions and let SnakeEnv.step decide what actually happens
         legal = [Action(0), Action(1), Action(2)]
     for a in legal:
         e = node.env.clone()
@@ -100,7 +101,8 @@ def simulate(node: TreeNode, max_rollout_steps: int = 80) -> float:
     total = 0.0
     for _ in range(max_rollout_steps):
         obs = obs_mod.observe_vec11(env)
-        action = int(_greedy_action_from_obs(obs))
+        # action = int(_greedy_action_from_obs(obs))
+        action = int(node.env.np_random.integers(3))
         _, reward, terminated, truncated, _ = env.step(action)
         total += reward
         if terminated or truncated:

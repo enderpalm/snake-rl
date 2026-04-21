@@ -71,11 +71,7 @@ class MCTSAgent(Agent):
             return Action.STRAIGHT
 
         engine = info.get("engine_state") if info else None
-        if not isinstance(engine, SnakeEnv):
-            self._decision_counts["greedy"] += 1
-            return self._greedy.act(state, info)
-
-        if self.simulations <= 0:
+        if not isinstance(engine, SnakeEnv) or self.simulations <= 0:
             self._decision_counts["greedy"] += 1
             return self._greedy.act(state, info)
 
@@ -92,4 +88,6 @@ class MCTSAgent(Agent):
             return chosen
         if Action.STRAIGHT in safe_actions:
             return Action.STRAIGHT
+
+        # random choice in safe_actions
         return safe_actions[int(self.rng.integers(len(safe_actions)))]
