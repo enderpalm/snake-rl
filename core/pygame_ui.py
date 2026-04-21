@@ -8,7 +8,7 @@ BG_COLOR = (15, 23, 42)
 GRID_COLOR = (30, 41, 59)
 TEXT_COLOR = (248, 250, 252)
 SIDEBAR_BG = (22, 28, 42)
-MCTS_SIDEBAR_W = 272
+MCTS_SIDEBAR_W = 420
 DEFAULT_BODY_COLOR = (52, 211, 153)
 APPLE_COLOR = (244, 63, 94)
 OBST_COLOR = (100, 116, 139)
@@ -223,8 +223,6 @@ class PygameUI:
         fs = self.font_small
         line_h = fs.get_height() + 2
         for i, line in enumerate(lines):
-            if len(line) > 34:
-                line = line[:31] + "…"
             surf = fs.render(line, True, TEXT_COLOR)
             screen.blit(surf, (x0, y + i * line_h))
 
