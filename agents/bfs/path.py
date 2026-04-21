@@ -1,7 +1,4 @@
-"""Shortest-path action on the real grid (needs engine_state snapshot).
-
-vec11 + shallow MCTS cannot see global geometry; BFS toward an apple breaks tight loops.
-"""
+"""Shortest-path action on the real grid (needs engine_state snapshot)."""
 
 from collections import deque
 
@@ -27,7 +24,6 @@ def _direction_to_action(current: Direction, want: Direction) -> Action:
         new_dir = (current.value + a.value - 1) % 4
         if new_dir == want.value:
             return a
-    # 180° not reachable in one relative move: pick the turn that gets closest in heading space.
     best: Action = Action.LEFT
     best_dist = 4
     for a in Action:
@@ -54,7 +50,6 @@ def _cell_blocked(
         return True
     if (r, c) == head:
         return False
-    # Tail often vacates next move — allow stepping into tail cell (classic snake pathfinding).
     if (r, c) == tail:
         return False
     if (r, c) in body_set:

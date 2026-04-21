@@ -4,36 +4,22 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from agents.base import Agent
+from agents.bfs.path import bfs_first_action_to_apple
 from agents.greedy import GreedyAgent
-from agents.mcts.tree import (
-    TreeNode,
-    backprop,
-    best_action,
-    expand,
-    select_leaf,
-    simulate,
-)
 from core.env.core import SnakeEnv
 from core.env.types import Action
 
 logger = logging.getLogger(__name__)
 
 
-class MCTSAgent(Agent):
-    """Monte Carlo tree search on vec11 + engine snapshots; greedy fallback when MCTS is skipped."""
+class BFSAgent(Agent):
+    """Grid BFS toward an apple when `engine_state` is in info; greedy vec11 fallback otherwise."""
 
-    def __init__(
-        self,
-        simulations: int = 48,
-        max_rollout_steps: int = 80,
-        seed: int | None = None,
-    ):
+    def __init__(self, seed: int | None = None):
         super().__init__(seed=seed)
         self.training = False
-        self.simulations = simulations
-        self.max_rollout_steps = max_rollout_steps
         self._greedy = GreedyAgent()
-        self._decision_counts = {"mcts": 0, "greedy": 0, "other": 0}
+        self._decision_counts = {"bfs": 0, "greedy": 0, "other": 0}
 
     def reset_decision_stats(self) -> None:
         for k in self._decision_counts:
@@ -43,7 +29,7 @@ class MCTSAgent(Agent):
         c = self._decision_counts
         total = sum(c.values())
         if total == 0:
-            msg = "MCTSAgent decisions: no act() calls recorded"
+            msg = "BFSAgent decisions: no act() calls recorded"
             print(msg)
             logger.info(msg)
             return
@@ -52,8 +38,8 @@ class MCTSAgent(Agent):
             return 100.0 * c[k] / total
 
         msg = (
-            f"MCTSAgent decisions (n={total}): "
-            f"MCTS {pct('mcts'):.1f}% | greedy {pct('greedy'):.1f}% | other {pct('other'):.1f}%"
+            f"BFSAgent decisions (n={total}): "
+            f"BFS {pct('bfs'):.1f}% | greedy {pct('greedy'):.1f}% | other {pct('other'):.1f}%"
         )
         print(msg)
         logger.info(msg)
@@ -75,21 +61,10 @@ class MCTSAgent(Agent):
             self._decision_counts["greedy"] += 1
             return self._greedy.act(state, info)
 
-        if self.simulations <= 0:
-            self._decision_counts["greedy"] += 1
-            return self._greedy.act(state, info)
+        bfs_action = bfs_first_action_to_apple(engine)
+        if bfs_action is not None:
+            self._decision_counts["bfs"] += 1
+            return bfs_action
 
-        root = TreeNode(engine.clone(), None, {}, 0, 0.0)
-        for _ in range(self.simulations):
-            leaf = select_leaf(root)
-            child = expand(leaf)
-            result = simulate(child, self.max_rollout_steps)
-            backprop(child, result)
-
-        chosen = best_action(root)
-        self._decision_counts["mcts"] += 1
-        if chosen in safe_actions:
-            return chosen
-        if Action.STRAIGHT in safe_actions:
-            return Action.STRAIGHT
-        return safe_actions[int(self.rng.integers(len(safe_actions)))]
+        self._decision_counts["greedy"] += 1
+        return self._greedy.act(state, info)
