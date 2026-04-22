@@ -86,9 +86,9 @@ def select_leaf(node: TreeNode) -> TreeNode:
 def expand(node: TreeNode) -> TreeNode:
     if _is_terminal(node.env):
         return node
-    # Expand all 3 actions and let SnakeEnv.step decide legality. vec11 marks
-    # tail-chase as unsafe but snake usually survives it (tail moves out), and
-    # pruning those moves traps MCTS in loops near the apple.
+    # Expand all 3 actions and let SnakeEnv.step decide.
+    # vec11 marks tail-chase as unsafe but snake usually survives it (tail moves out),
+    # and pruning those moves traps MCTS in loops near the apple.
     for a in (Action(0), Action(1), Action(2)):
         e = node.env.clone()
         _, r, _, _, _ = e.step(int(a))
@@ -96,11 +96,10 @@ def expand(node: TreeNode) -> TreeNode:
     return node.env.np_random.choice(list(node.children.values()))
 
 
-# Discount factor for returns. With long greedy rollouts, any starting state looks
-# roughly equally good (rollout always eats apples eventually), which swamps the
-# small per-step reward signal and lets MCTS loop near the apple. Discounting
-# pushes far-future rollout gains down so that near-term r(parent -> child)
-# dominates Q, which is exactly what we want.
+# Discount factor for returns
+# long greedy rollouts = any starting state looks roughly equally good
+# which swamps the small per-step reward signal and lets MCTS loop near the apple.
+# Discounting pushes far-future rollout gains down so that near-term r(parent -> child) dominates Q.
 GAMMA: float = 0.9
 
 
@@ -132,8 +131,7 @@ def backprop(node: TreeNode, result: float) -> None:
     while node:
         node.visits += 1
         node.value += g
-        # Move up: this node's return becomes its parent's next-step return, so the
-        # parent sees step_reward(node) + gamma * g.
+        # this node's return -> its parent's next-step return, so discount it
         g = node.step_reward + GAMMA * g
         node = node.parent
 
@@ -145,7 +143,11 @@ def best_action(node: TreeNode) -> Action:
     best_key: tuple[int, float] | None = None
     candidates: list[Action] = []
     for action, child in node.children.items():
-        q = (child.step_reward + GAMMA * child.value / child.visits) if child.visits else -1e30
+        q = (
+            (child.step_reward + GAMMA * child.value / child.visits)
+            if child.visits
+            else -1e30
+        )
         key = (child.visits, q)
         if best_key is None or key > best_key:
             best_key = key
