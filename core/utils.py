@@ -3,7 +3,7 @@ import numpy as np
 import random
 from pathlib import Path
 from tqdm import tqdm
-from typing import Tuple
+from typing import Any, Tuple
 
 from gymnasium.vector import SyncVectorEnv
 from agents.base import Agent
@@ -12,6 +12,24 @@ from core.env.types import ObserveType, RenderMode
 
 METRIC_PATH = "../artifacts/metrics/"
 BREAKER_WIDTH = 60
+
+
+def _info_for_env_idx(infos: dict[str, Any] | None, env_idx: int, num_envs: int) -> dict[str, Any] | None:
+    """Extract the info dict for a single sub-env from SyncVectorEnv batched infos."""
+    if not infos:
+        return None
+    out: dict[str, Any] = {}
+    for k, v in infos.items():
+        if isinstance(v, (list, tuple)):
+            if len(v) == num_envs:
+                out[k] = v[env_idx]
+            else:
+                out[k] = v
+        elif isinstance(v, np.ndarray) and v.ndim >= 1 and v.shape[0] == num_envs:
+            out[k] = v[env_idx]
+        else:
+            out[k] = v
+    return out
 
 
 def save_metrics(logs: list[dict], filepath: str) -> None:
@@ -50,6 +68,7 @@ def evaluate_agent(
     reward_options: RewardOptions = RewardOptions(),
     max_steps: int = 2000,
     seed: int | None = None,
+    snapshot_engine_state: bool = False,
 ) -> tuple[dict, dict, dict, dict]:
 
     # For the env to be exactly the same, both num_envs and seed must be the same.
@@ -72,6 +91,7 @@ def evaluate_agent(
             render_options=render_options,
             reward_options=reward_options,
             max_steps=max_steps,
+            snapshot_engine_state=snapshot_engine_state,
         )
 
     if render_mode == RenderMode.HUMAN:
@@ -79,7 +99,10 @@ def evaluate_agent(
         num_envs = 1
 
     env = SyncVectorEnv([env_factory(i) for i in range(num_envs)])
-    obs, _ = env.reset(seed=seed)
+    obs, infos = env.reset(seed=seed)
+
+    if hasattr(agent, "reset_decision_stats"):
+        agent.reset_decision_stats()
 
     metrics = {"rewards": [], "apples": [], "steps": []}
     death_dist = {}
@@ -92,7 +115,20 @@ def evaluate_agent(
         disable=(render_mode == RenderMode.HUMAN),
     ) as pbar:
         while completed < num_episodes:
-            next_obs, rewards, done, truncs, infos = env.step([agent.act(o) for o in obs])
+            actions = [
+                agent.act(
+                    obs[i],
+                    _info_for_env_idx(infos, i, num_envs),
+                )
+                for i in range(num_envs)
+            ]
+            if render_mode == RenderMode.HUMAN and num_envs >= 1:
+                setattr(
+                    env.envs[0],
+                    "mcts_panel",
+                    getattr(agent, "last_mcts_panel", None),
+                )
+            next_obs, rewards, done, truncs, infos = env.step(actions)
             ep_rewards += rewards
             ep_steps += 1
 
@@ -151,5 +187,8 @@ def evaluate_agent(
             f" - {reason.value if hasattr(reason, 'value') else reason}: {count} ({(count / num_episodes) * 100:.1f}%)"
         )
     print("=" * BREAKER_WIDTH + "\n")
+
+    if hasattr(agent, "log_decision_stats"):
+        agent.log_decision_stats()
 
     return stats["rewards"], stats["apples"], stats["steps"], death_dist

@@ -7,6 +7,8 @@ from core.env.types import DIR_OFFSETS, GridType
 BG_COLOR = (15, 23, 42)
 GRID_COLOR = (30, 41, 59)
 TEXT_COLOR = (248, 250, 252)
+SIDEBAR_BG = (22, 28, 42)
+MCTS_SIDEBAR_W = 420
 DEFAULT_BODY_COLOR = (52, 211, 153)
 APPLE_COLOR = (244, 63, 94)
 OBST_COLOR = (100, 116, 139)
@@ -28,13 +30,16 @@ class PygameUI:
         self.screen = None
         self.clock = None
         self.paused = False
+        self.sidebar_w = 0
 
-    def init_screen(self, width: int, height: int):
+    def init_screen(self, width: int, height: int, sidebar_w: int = 0):
         if not pygame.get_init():
             pygame.init()
 
         self.metrics_height = 40
-        self.screen_width = width * self.cell_size
+        self.sidebar_w = sidebar_w
+        grid_w = width * self.cell_size
+        self.screen_width = grid_w + self.sidebar_w
         self.screen_height = height * self.cell_size + self.metrics_height
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
 
@@ -45,8 +50,10 @@ class PygameUI:
         font_path = os.path.join(os.path.dirname(__file__), "../resources/JetBrainsMono-Regular.ttf")
         try:
             self.font = pygame.font.Font(font_path, JETBRAINS_FONT_SIZE)
+            self.font_small = pygame.font.Font(font_path, 13)
         except Exception:
             self.font = pygame.font.SysFont(None, 24)
+            self.font_small = pygame.font.SysFont(None, 14)
 
         obs_size = self.cell_size - 2
         self.obst_surf = pygame.Surface((obs_size, obs_size))
@@ -204,6 +211,40 @@ class PygameUI:
             gap_surf.fill((*color, alpha))
             screen.blit(gap_surf, (gx, gy))
 
+    def _draw_mcts_sidebar(self, screen, env: SnakeEnv):
+        lines = getattr(env, "mcts_panel", None)
+        if not lines:
+            return
+        grid_w = env.width * self.cell_size
+        h = env.height * self.cell_size
+        pygame.draw.rect(screen, SIDEBAR_BG, (grid_w, 0, self.sidebar_w, h))
+        x0 = grid_w + 6
+        y = 8
+        fs = self.font_small
+        line_h = fs.get_height() + 2
+        for i, line in enumerate(lines):
+            surf = fs.render(line, True, TEXT_COLOR)
+            screen.blit(surf, (x0, y + i * line_h))
+
+    def _resize_for_panel(self, env: SnakeEnv) -> None:
+        panel = getattr(env, "mcts_panel", None)
+        want = MCTS_SIDEBAR_W if panel else 0
+        grid_w = env.width * self.cell_size
+        grid_h = env.height * self.cell_size
+        need_w = grid_w + want
+        need_h = grid_h + self.metrics_height
+        if self.screen is not None and (need_w, need_h) == (self.screen_width, self.screen_height):
+            self.sidebar_w = want
+            return
+        self.sidebar_w = want
+        self.screen_width = need_w
+        self.screen_height = need_h
+        if not pygame.get_init():
+            pygame.init()
+        self.screen = pygame.display.set_mode((need_w, need_h))
+        if self.clock is None:
+            self.clock = pygame.time.Clock()
+
     def _draw_metrics(self, screen, env, total_rewards):
         metrics_y = env.height * self.cell_size
         pygame.draw.rect(screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height))
@@ -222,7 +263,11 @@ class PygameUI:
 
     def render(self, env: SnakeEnv, total_rewards: Optional[float] = None):
         if getattr(self, "screen", None) is None:
-            self.init_screen(env.width, env.height)
+            panel = getattr(env, "mcts_panel", None)
+            sw = MCTS_SIDEBAR_W if panel else 0
+            self.init_screen(env.width, env.height, sidebar_w=sw)
+        else:
+            self._resize_for_panel(env)
 
         screen = self.screen
         assert screen is not None
@@ -230,6 +275,7 @@ class PygameUI:
         screen.fill(BG_COLOR)
 
         self._draw_grid(screen, env)
+        self._draw_mcts_sidebar(screen, env)
         self._draw_obstacles(screen, env)
         self._draw_apples(screen, env)
         self._draw_snake(screen, env)
