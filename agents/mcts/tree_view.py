@@ -42,3 +42,29 @@ def mcts_panel_lines(root: TreeNode, chosen: Action | None) -> list[str]:
             line = "  " + line
         lines.append(line)
     return lines
+
+
+def mcts_panel_lines_from_summary(
+    summary: dict[Action, tuple[int, float]],
+    chosen: Action | None,
+    total_visits: int,
+    num_workers: int,
+) -> list[str]:
+    """Panel for root-parallel MCTS: aggregated visit counts + mean Q across workers."""
+    lines: list[str] = []
+    cv = chosen.name if chosen is not None else "—"
+    lines.append(f"MCTS (x{num_workers}) visits={total_visits}  chosen={cv}")
+    lines.append("action          v  meanQ")
+    if not summary:
+        lines.append("— (no children yet)")
+        return lines
+    for a in _ACTION_ORDER:
+        nm = f"{_ACTION_LABEL[a]:<8}"
+        if a not in summary:
+            line = f"{nm}       —    —"
+        else:
+            v, mean_q = summary[a]
+            line = f"{nm} {v:4d} {mean_q:7.3f}"
+        line = ("> " if chosen is not None and a == chosen else "  ") + line
+        lines.append(line)
+    return lines
