@@ -2,7 +2,7 @@ import sys
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Tuple, Any, Optional
+from typing import Tuple, Any, Optional, List
 from collections import deque
 
 import core.env.observations as obs
@@ -300,3 +300,4 @@ class SnakeEnv(gym.Env):
         if self.ui:
             self.ui.quit()
             self.ui = None
+
