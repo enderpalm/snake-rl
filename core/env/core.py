@@ -2,21 +2,25 @@ import sys
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Tuple, Any, Optional, List
+import numpy.typing as npt
+from typing import SupportsFloat, Tuple, Any
 from collections import deque
+from dataclasses import replace
 
 import core.env.observations as obs
 from core.env.types import (
+    DEFAULT_RENDER_OPTIONS,
+    DEFAULT_REWARD,
+    Action,
     Direction,
     GridType,
     ObserveType,
     RenderMode,
     RenderOptions,
-    RewardOptions,
     DeathReason,
     DIR_OFFSETS,
+    RewardOptions,
 )
-
 
 class Snake:
     def __init__(
@@ -44,21 +48,36 @@ class Snake:
         return new_snake
 
 
+# --------------- SnakeEnv: Single-agent Gymnasium environment --------------- #
+
+
+
+
 class SnakeEnv(gym.Env):
-    REWARDS: RewardOptions = RewardOptions()
+    """
+    A Gymnasium environment for single-agent Snake. The snake starts in the middle of the grid,
+    and can move in 3 relative directions (straight, left, right). The goal is to eat apples that spawn randomly on the grid, while avoiding collisions with walls, obstacles, and itself.
+
+    The environment supports two types of observations:
+    - Partially observable, 11-dimensional vector (based on this [paper](https://www.researchgate.net/publication/387389306_Comparative_Evaluation_of_Reinforcement_Learning_Algorithms_on_the_Snake_Game))
+    - Fully observable 3-channel grid (head/body/tail, apples, obstacles) for CNN-based agents
+
+    Rewards are given for eating apples, taking steps, and penalties for dying or looping.
+    The environment can be rendered and interacted with using Pygame for visualization.
+    """
 
     def __init__(
         self,
-        width: int = 15,
-        height: int = 15,
+        width: int = 20,
+        height: int = 20,
         obs_type: ObserveType | int = ObserveType.VEC_11,
         num_apples: int = 1,
         num_obstacles: int = 0,
+        max_steps: int = 2000,
         seed: int | None = None,
         render_mode: RenderMode | None = None,
-        render_options: RenderOptions | None = None,
-        reward_options: RewardOptions | dict | None = None,
-        max_steps: int = 2000,
+        render_options: RenderOptions = DEFAULT_RENDER_OPTIONS,
+        reward_options: RewardOptions = DEFAULT_REWARD,
         snapshot_engine_state: bool = False,
     ):
         super().__init__()
@@ -70,40 +89,29 @@ class SnakeEnv(gym.Env):
             max_steps,
         )
         self.num_apples, self.num_obstacles = num_apples, num_obstacles
-        self.np_random = np.random.default_rng(seed)
+        self._np_random_seed = seed
+
+        self.rewards: RewardOptions = (
+            reward_options
+            if isinstance(reward_options, RewardOptions)
+            else replace(DEFAULT_REWARD, **(reward_options or {}))
+        )
 
         self.snake: Snake | None = None
         self.apples: set[Tuple[int, int]] = set()
         self.obstacles: set[Tuple[int, int]] = set()
-        self.grid = np.full((self.height, self.width), fill_value=GridType.EMPTY, dtype=np.int8)
+        self.grid = np.full((self.height, self.width), fill_value=GridType.EMPTY, dtype=np.uint8)
 
+        # For single-agent env, done is equivalent to 'snake not being alive'
         self.step_count = 0
-        self.done = False
         self.snapshot_engine_state = snapshot_engine_state
 
-        if reward_options:
-            # accept a dict-like or a dataclass instance
-            if hasattr(reward_options, "items"):
-                items = reward_options.items()
-            else:
-                items = vars(reward_options).items()
-            for k, v in items:
-                setattr(type(self).REWARDS, k, v)
-
+        # Initialize rendering
         self.ui = None
         if self.render_mode == RenderMode.HUMAN:
             from core.pygame_ui import PygameUI
 
-            opts = render_options or {}
-            ui_kwargs: dict = {}
-            if "cell_size" in opts:
-                ui_kwargs["cell_size"] = opts["cell_size"]
-            if "render_fps" in opts:
-                ui_kwargs["fps"] = opts["render_fps"]
-            if "agent_color" in opts:
-                ui_kwargs["agent_color"] = opts["agent_color"]
-
-            self.ui = PygameUI(**ui_kwargs)
+            self.ui = PygameUI(render_options)
             self.ui.init_screen(width, height)
 
         # Not explicity used, but good to have for gym.env compliance
@@ -111,18 +119,13 @@ class SnakeEnv(gym.Env):
         self.observation_space = (
             spaces.MultiBinary(11)
             if self.obs_type == ObserveType.VEC_11
-            else spaces.Box(low=0, high=255, shape=(3, height, width), dtype=np.uint8)
+            else spaces.Box(low=0, high=3, shape=(3, height, width), dtype=np.uint8)
         )
 
-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[Any, dict]:
-        super().reset(seed=seed, options=options)
-        if options:
-            self.num_apples = options.get("num_apples", self.num_apples)
-            self.num_obstacles = options.get("num_obstacles", self.num_obstacles)
+    def reset(self, *, seed: int | None = None, options: dict | None = None) -> Tuple[Any, dict]:
+        super().reset(seed=seed)
 
         self.step_count = 0
-        self.done = False
-
         self.snake = Snake(
             start_pos=(self.height // 2, self.width // 2),
             length=3,
@@ -132,8 +135,8 @@ class SnakeEnv(gym.Env):
         self.obstacles.clear()
         self.grid.fill(GridType.EMPTY)
 
-        for i, (r, c) in enumerate(self.snake.body):
-            self.grid[r, c] = GridType.HEAD if i == 0 else GridType.BODY
+        for r, c in self.snake.body:
+            self.grid[r, c] = GridType.SNAKE
 
         self._spawn_items(self.num_apples, self.apples, GridType.APPLE)
         self._spawn_items(self.num_obstacles, self.obstacles, GridType.OBSTACLE)
@@ -149,14 +152,14 @@ class SnakeEnv(gym.Env):
             self.grid[r, c] = grid_type
 
     def set_item_dyn(self, pos: Tuple[int, int], grid_type: GridType, add: bool = True):
-        if self.grid[pos] in (GridType.HEAD, GridType.BODY):
+        if self.grid[pos] is GridType.SNAKE:
             return
 
         target_set = self.apples if grid_type == GridType.APPLE else self.obstacles
         if add:
             self.grid[pos] = grid_type
             target_set.add(pos)
-        elif self.grid[pos] == grid_type:
+        elif self.grid[pos] is grid_type:
             self.grid[pos] = GridType.EMPTY
             target_set.discard(pos)
 
@@ -166,11 +169,10 @@ class SnakeEnv(gym.Env):
         r, c = self.snake.body[0]
         return min(abs(r - ar) + abs(c - ac) for ar, ac in self.apples)  # L1 distance
 
-    def _get_observation(self) -> Any:
-        if self.obs_type == ObserveType.FULL:
+    def _get_observation(self) -> npt.NDArray[np.uint8]:
+        if self.obs_type == ObserveType.FULL_GRID:
             return obs.observe_full_grid(self)
-
-        elif self.obs_type == ObserveType.VEC_11:
+        else:  # Default to vec_11 as self.obs_type default value is ObserveType.VEC_11
             return obs.observe_vec11(self)
 
     def _get_info(self) -> dict:
@@ -179,91 +181,88 @@ class SnakeEnv(gym.Env):
             "death_reason": snake.last_death_reason if snake else None,
             "apples_eaten": snake.apples_eaten if snake else 0,
         }
-        if getattr(self, "snapshot_engine_state", False):
+        if self.snapshot_engine_state:
             info["engine_state"] = self.clone()
         return info
 
-    def step(self, action: int) -> Tuple[Any, float, bool, bool, dict]:
+    def _mark_dead(self, reason: DeathReason):
+        if not self.snake:
+            return
+        self.snake.alive = False
+        self.snake.last_death_reason = reason
+        for br, bc in self.snake.body:
+            if self.grid[br, bc] is GridType.SNAKE:
+                self.grid[br, bc] = GridType.EMPTY
+
+    def step(self, action: Action) -> Tuple[npt.NDArray[np.uint8], SupportsFloat, bool, bool, dict]:
         snake = self.snake
-        if self.done or not snake or not snake.alive:
+        if not snake or not snake.alive:
             return self._get_observation(), 0.0, True, False, self._get_info()
-
-        # update direction and remember distance to nearest apple
-        snake.dir = Direction((snake.dir + action - 1) % 4)
-        dist_before = self._min_dist_to_apple()
-
-        # bookkeeping
-        self.step_count += 1
-        reward = 0.0
-        hit_apple = False
 
         grid = self.grid
         apples = self.apples
         obstacles = self.obstacles
-        r_cfg = self.REWARDS
+        rewards = self.rewards
 
+        snake.dir = Direction((snake.dir + action - 1) % 4)
         head_r, head_c = snake.body[0]
         dy, dx = DIR_OFFSETS[snake.dir]
         new_head = (head_r + dy, head_c + dx)
 
-        def _die(reason: DeathReason, penalty: float) -> float:
-            snake.alive = False
-            snake.last_death_reason = reason
-            for br, bc in snake.body:
-                if grid[br, bc] in (GridType.HEAD, GridType.BODY):
-                    grid[br, bc] = GridType.EMPTY
-            return penalty
+        dist_before = self._min_dist_to_apple()
+        reward = 0.0
+        hit_apple = False
 
-        # collision / movement
-        nr, nc = new_head
-        if not (0 <= nr < self.height and 0 <= nc < self.width):
-            reward += _die(DeathReason.WALL, r_cfg.reward_death_wall)
+        # movement & collision handling
+        pr, pc = new_head
+        if (not (0 <= pr < self.height and 0 <= pc < self.width)) or grid[new_head] == GridType.OBSTACLE:
+            # Snake new head is out of bounds or hits an obstacle
+            self._mark_dead(DeathReason.WALL)
+            reward += rewards.death_wall
+        elif grid[new_head] == GridType.SNAKE and not (new_head == snake.body[-1] and new_head not in apples):
+            # Snake collides with itself (note: allow moving into the tail if it's not eating an apple,
+            # since the tail will move away in the same step)
+            self._mark_dead(DeathReason.SELF)
+            reward += rewards.death_self
         else:
-            target = grid[new_head]
-            if target == GridType.OBSTACLE:
-                reward += _die(DeathReason.WALL, r_cfg.reward_death_wall)
-            elif target in (GridType.BODY, GridType.HEAD) and not (
-                new_head == snake.body[-1] and new_head not in apples
-            ):
-                reward += _die(DeathReason.SELF, r_cfg.reward_death_self)
+            # Valid movement, move snake's head
+            snake.body.appendleft(new_head)
+            grid[new_head] = GridType.SNAKE
+            if new_head in apples:
+                hit_apple = True
+                apples.remove(new_head)
+                if len(apples) < self.num_apples:
+                    self._spawn_items(1, apples, GridType.APPLE)
+                reward += rewards.eats_apple
             else:
-                snake.body.appendleft(new_head)
-                if len(snake.body) > 1:
-                    grid[snake.body[1]] = GridType.BODY
-                grid[new_head] = GridType.HEAD
+                tr, tc = snake.body.pop()
+                grid[tr, tc] = GridType.EMPTY
+                reward += rewards.penalty_step
 
-                if new_head in apples:
-                    hit_apple = True
-                    apples.remove(new_head)
-                    if len(apples) < self.num_apples:
-                        self._spawn_items(1, apples, GridType.APPLE)
-                    reward += r_cfg.reward_apple
-                else:
-                    tr, tc = snake.body.pop()
-                    grid[tr, tc] = GridType.EMPTY
-                    reward += r_cfg.reward_step
+            # If snake fills the entire grid (except obstacles), it's a win condition
+            if len(snake.body) == self.width * self.height - len(obstacles):
+                self._mark_dead(DeathReason.COMPLETE)
+                reward += rewards.complete
 
-                if len(snake.body) == self.width * self.height - len(obstacles):
-                    reward += _die(DeathReason.COMPLETE, r_cfg.reward_complete)
-
+        # reward shaping & loop penalty
         pure_movement = not hit_apple and snake.alive
         if pure_movement and apples:
             closer = self._min_dist_to_apple() < dist_before
-            reward += r_cfg.reward_shaping_closer if closer else r_cfg.reward_shaping_further
+            reward += rewards.shaping_closer if closer else rewards.shaping_further
             if new_head in snake.recent_positions:
-                reward += r_cfg.reward_loop_penalty
+                reward += rewards.penalty_loop
             snake.recent_positions.append(new_head)
-        else:
-            if hit_apple or not pure_movement:
-                snake.recent_positions.clear()
+        elif hit_apple or not pure_movement:
+            snake.recent_positions.clear()
 
         snake.total_rewards += reward
-        if hit_apple:
-            snake.apples_eaten += 1
+        snake.apples_eaten += 1 if hit_apple else 0
 
         truncated = self.step_count >= self.max_steps
-        if truncated and snake.alive:
-            snake.last_death_reason = DeathReason.TRUNCATED
+        if truncated:
+            self._mark_dead(DeathReason.TRUNCATED)
+        else:
+            self.step_count += 1
 
         return self._get_observation(), reward, not snake.alive, truncated, self._get_info()
 
@@ -280,10 +279,9 @@ class SnakeEnv(gym.Env):
         new_env.np_random.bit_generator.state = self.np_random.bit_generator.state
         if self.snake:
             new_env.snake = self.snake.clone()
-        new_env.apples, new_env.obstacles = set(self.apples), set(self.obstacles)
+        new_env.apples, new_env.obstacles = set(self.apples), set(self.obstacles)  # Shallow copy
         new_env.grid = self.grid.copy()
         new_env.step_count = self.step_count
-        new_env.done = self.done
         return new_env
 
     def render(self):
@@ -300,4 +298,3 @@ class SnakeEnv(gym.Env):
         if self.ui:
             self.ui.quit()
             self.ui = None
-

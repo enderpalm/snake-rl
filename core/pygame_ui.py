@@ -1,32 +1,35 @@
+from dataclasses import replace
 import os
 import pygame
 from typing import Optional
+
 from core.env.core import SnakeEnv
-from core.env.types import DIR_OFFSETS, GridType
+from core.env.types import DEFAULT_RENDER_OPTIONS, DIR_OFFSETS, GridType, RenderOptions
 
 BG_COLOR = (15, 23, 42)
 GRID_COLOR = (30, 41, 59)
 TEXT_COLOR = (248, 250, 252)
 SIDEBAR_BG = (22, 28, 42)
 MCTS_SIDEBAR_W = 420
-DEFAULT_BODY_COLOR = (52, 211, 153)
 APPLE_COLOR = (244, 63, 94)
 OBST_COLOR = (100, 116, 139)
 SEGMENT_MARGIN = 2
 TAIL_ALPHA = 0.5
 JETBRAINS_FONT_SIZE = 16
 
-
 class PygameUI:
     def __init__(
         self,
-        cell_size: int = 40,
-        fps: int = 30,
-        agent_color: Optional[tuple[int, int, int]] = None,
+        options: RenderOptions = DEFAULT_RENDER_OPTIONS,
     ):
-        self.cell_size = cell_size
-        self.fps = fps
-        self.agent_color = agent_color if agent_color else DEFAULT_BODY_COLOR
+        self.options: RenderOptions = (
+            options
+            if isinstance(options, RenderOptions)
+            else replace(DEFAULT_RENDER_OPTIONS, **(options or {}))
+        )
+        self.cell_size = self.options.cell_size
+        self.fps = self.options.render_fps
+        self.agent_color = self.options.agent_color
         self.screen = None
         self.clock = None
         self.paused = False
@@ -36,6 +39,7 @@ class PygameUI:
         if not pygame.get_init():
             pygame.init()
 
+        # Display dimensions
         self.metrics_height = 40
         self.sidebar_w = sidebar_w
         grid_w = width * self.cell_size
@@ -47,7 +51,10 @@ class PygameUI:
         pygame.display.set_icon(pygame.Surface((1, 1)))
         self.clock = pygame.time.Clock()
 
-        font_path = os.path.join(os.path.dirname(__file__), "../resources/JetBrainsMono-Regular.ttf")
+        # Setup fonts and pre-render obstacle surface
+        font_path = os.path.join(
+            os.path.dirname(__file__), "../resources/JetBrainsMono-Regular.ttf"
+        )
         try:
             self.font = pygame.font.Font(font_path, JETBRAINS_FONT_SIZE)
             self.font_small = pygame.font.Font(font_path, 13)
@@ -60,17 +67,23 @@ class PygameUI:
         self.obst_surf.fill((20, 30, 50))
         pygame.draw.rect(self.obst_surf, OBST_COLOR, (0, 0, obs_size, obs_size), 1)
         for i in range(-obs_size, obs_size * 2, 8):
-            pygame.draw.line(self.obst_surf, OBST_COLOR, (i, 0), (i + obs_size, obs_size), 3)
+            pygame.draw.line(
+                self.obst_surf, OBST_COLOR, (i, 0), (i + obs_size, obs_size), 3
+            )
 
     def confirm_exit(self) -> bool:
-        if not getattr(self, "screen", None):
+        if not self.screen:
             return True
 
-        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay = pygame.Surface(
+            (self.screen_width, self.screen_height), pygame.SRCALPHA
+        )
         overlay.fill((0, 0, 0, 180))
 
         text_surf = self.font.render("Exit game? (Y/N)", True, TEXT_COLOR)
-        text_rect = text_surf.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+        text_rect = text_surf.get_rect(
+            center=(self.screen_width // 2, self.screen_height // 2)
+        )
         overlay.blit(text_surf, text_rect)
 
         self.screen.blit(overlay, (0, 0))  # pyright: ignore[reportOptionalMemberAccess]
@@ -80,11 +93,14 @@ class PygameUI:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return True
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_y:
-                        return True
-                    if event.key in (pygame.K_n, pygame.K_ESCAPE):
-                        return False
+                if event.type != pygame.KEYDOWN:
+                    continue
+
+                # Keydown, Confirm with Y, cancel with N or Esc
+                if event.key == pygame.K_y:
+                    return True
+                if event.key in (pygame.K_n, pygame.K_ESCAPE):
+                    return False
             self.clock.tick(self.fps)  # pyright: ignore[reportOptionalMemberAccess]
 
     def handle_events(self, env: SnakeEnv) -> bool:
@@ -93,16 +109,27 @@ class PygameUI:
                 return False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 self.paused = not self.paused
-            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION) and self.paused:
+            elif (
+                event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION)
+                and self.paused
+            ):
+                # Left-click to add, right-click to remove, shift for apple
                 b1, _, b3 = pygame.mouse.get_pressed()
-                if b1 or b3:
-                    c, r = (
-                        event.pos[0] // self.cell_size,
-                        event.pos[1] // self.cell_size,
-                    )
-                    grid_type = GridType.APPLE if (pygame.key.get_mods() & pygame.KMOD_SHIFT) else GridType.OBSTACLE
-                    env.set_item_dyn((r, c), grid_type, b1)
+                if not (b1 or b3):
+                    continue
+                c, r = (
+                    event.pos[0] // self.cell_size,
+                    event.pos[1] // self.cell_size,
+                )
+                grid_type = (
+                    GridType.APPLE
+                    if (pygame.key.get_mods() & pygame.KMOD_SHIFT)
+                    else GridType.OBSTACLE
+                )
+                env.set_item_dyn((r, c), grid_type, b1)
         return True
+    
+    # ---------------- Components-drawing methods and render loop ---------------- #
 
     def _draw_grid(self, screen, env):
         for r in range(env.height):
@@ -121,9 +148,12 @@ class PygameUI:
 
     def _draw_obstacles(self, screen, env):
         for r, c in env.obstacles:
-            screen.blit(self.obst_surf, (c * self.cell_size + 1, r * self.cell_size + 1))
+            screen.blit(
+                self.obst_surf, (c * self.cell_size + 1, r * self.cell_size + 1)
+            )
 
     def _draw_apples(self, screen, env):
+        # Draw apples with a pulsating ripple effect
         time_ms = pygame.time.get_ticks()
         ripple_progress = (time_ms % 1000) / 1000.0
         base_hs = self.cell_size // 4
@@ -146,7 +176,9 @@ class PygameUI:
                 ],
             )
 
-            ripple_surf = pygame.Surface((self.cell_size * 2, self.cell_size * 2), pygame.SRCALPHA)
+            ripple_surf = pygame.Surface(
+                (self.cell_size * 2, self.cell_size * 2), pygame.SRCALPHA
+            )
             pygame.draw.polygon(
                 ripple_surf,
                 (*APPLE_COLOR, alpha),
@@ -180,6 +212,7 @@ class PygameUI:
             seg_surf.fill((*color, alpha))
 
             if i == 0:
+                # Draw head as a pointed polygon in the direction of movement
                 cx, cy, s = w / 2.0, h / 2.0, w / 3.0
                 dy, dx = DIR_OFFSETS[snake.dir]
                 pts = [
@@ -192,7 +225,9 @@ class PygameUI:
             screen.blit(seg_surf, (x, y))
 
             if i > 0:
-                self._draw_snake_connections(screen, r, c, snake.body[i - 1], x, y, w, h, color, alpha)
+                self._draw_snake_connections(
+                    screen, r, c, snake.body[i - 1], x, y, w, h, color, alpha
+                )
 
     def _draw_snake_connections(self, screen, r, c, prev_pos, x, y, w, h, color, alpha):
         pr, pc = prev_pos
@@ -233,7 +268,10 @@ class PygameUI:
         grid_h = env.height * self.cell_size
         need_w = grid_w + want
         need_h = grid_h + self.metrics_height
-        if self.screen is not None and (need_w, need_h) == (self.screen_width, self.screen_height):
+        if self.screen is not None and (need_w, need_h) == (
+            self.screen_width,
+            self.screen_height,
+        ):
             self.sidebar_w = want
             return
         self.sidebar_w = want
@@ -247,7 +285,9 @@ class PygameUI:
 
     def _draw_metrics(self, screen, env, total_rewards):
         metrics_y = env.height * self.cell_size
-        pygame.draw.rect(screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height))
+        pygame.draw.rect(
+            screen, GRID_COLOR, (0, metrics_y, self.screen_width, self.metrics_height)
+        )
 
         snake, reward = env.snake, total_rewards or 0.0
         stats = f"Steps: {env.step_count} | Snake Length: {len(snake.body)} | Reward: {reward:.1f}"
@@ -261,6 +301,7 @@ class PygameUI:
             (10 + prefix_surf.get_width(), metrics_y + 10),
         )
 
+    # Main render loop
     def render(self, env: SnakeEnv, total_rewards: Optional[float] = None):
         if getattr(self, "screen", None) is None:
             panel = getattr(env, "mcts_panel", None)

@@ -6,17 +6,22 @@ if TYPE_CHECKING:
     from core.env.core import SnakeEnv
 from core.env.types import DIR_OFFSETS, Direction, GridType
 
-def observe_vec11(env: "SnakeEnv") -> npt.NDArray[np.int8]:  # Boolean still uses 1 byte
+
+def observe_vec11(env: "SnakeEnv") -> npt.NDArray[np.uint8]:  
+    # Numpy boolean still uses 1 byte, use uint8 to be unified type with more complex observations
     if not env.snake:
-        return np.zeros(11, dtype=np.int8)
+        return np.zeros(11, dtype=np.uint8)
     r, c = env.snake.body[0]
     dy, dx = DIR_OFFSETS[env.snake.dir]
     y, x = next(iter(env.apples)) if env.apples else (r, c)
-    col = lambda pr, pc: not (0 <= pr < env.height and 0 <= pc < env.width) or env.grid[pr, pc] in (
-        GridType.OBSTACLE,
-        GridType.BODY,
-        GridType.HEAD,
-    )
+
+    def col(pr, pc):
+        return not (0 <= pr < env.height and 0 <= pc < env.width) or env.grid[
+            pr, pc
+        ] in (
+            GridType.OBSTACLE,
+            GridType.SNAKE,
+        )
 
     return np.array(
         [
@@ -32,7 +37,7 @@ def observe_vec11(env: "SnakeEnv") -> npt.NDArray[np.int8]:  # Boolean still use
             y < r,
             y > r,
         ],
-        dtype=np.int8,
+        dtype=np.uint8,
     )
 
 
@@ -41,10 +46,8 @@ def observe_full_grid(env: "SnakeEnv") -> npt.NDArray[np.uint8]:
     for r in range(env.height):
         for c in range(env.width):
             cell = env.grid[r, c]
-            if cell == GridType.HEAD:
+            if cell == GridType.SNAKE:
                 grid_obs[0, r, c] = 1
-            elif cell == GridType.BODY:
-                grid_obs[1, r, c] = 1
             elif cell == GridType.APPLE:
                 grid_obs[2, r, c] = 1
     return grid_obs

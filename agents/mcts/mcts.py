@@ -156,7 +156,9 @@ class MCTSAgent(Agent):
         seeds = [int(self.rng.integers(1, 2**31 - 1)) for _ in sims_per_worker]
 
         futures = [
-            self._pool.submit(_mcts_worker, engine.clone(), s, self.max_rollout_steps, seed)
+            self._pool.submit(
+                _mcts_worker, engine.clone(), s, self.max_rollout_steps, seed
+            )
             for s, seed in zip(sims_per_worker, seeds)
         ]
 

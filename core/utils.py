@@ -14,7 +14,9 @@ METRIC_PATH = "../artifacts/metrics/"
 BREAKER_WIDTH = 60
 
 
-def _info_for_env_idx(infos: dict[str, Any] | None, env_idx: int, num_envs: int) -> dict[str, Any] | None:
+def _info_for_env_idx(
+    infos: dict[str, Any] | None, env_idx: int, num_envs: int
+) -> dict[str, Any] | None:
     """Extract the info dict for a single sub-env from SyncVectorEnv batched infos."""
     if not infos:
         return None
@@ -42,7 +44,9 @@ def save_metrics(logs: list[dict], filepath: str) -> None:
     if not logs:
         return
 
-    filepath = METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
+    filepath = (
+        METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
+    )
     filepath_obj = Path(filepath)
     filepath_obj.parent.mkdir(parents=True, exist_ok=True)
 
@@ -137,11 +141,15 @@ def evaluate_agent(
                     if completed < num_episodes:
                         metrics["rewards"].append(ep_rewards[i])
                         metrics["steps"].append(ep_steps[i])
-                        metrics["apples"].append(infos.get("apples_eaten", [0] * num_envs)[i])
+                        metrics["apples"].append(
+                            infos.get("apples_eaten", [0] * num_envs)[i]
+                        )
 
                         death_reason = infos.get("death_reason", [None] * num_envs)[i]
                         if death_reason:
-                            death_dist[death_reason] = death_dist.get(death_reason, 0) + 1
+                            death_dist[death_reason] = (
+                                death_dist.get(death_reason, 0) + 1
+                            )
 
                         # Re-sample boundaries for internal env
                         env.envs[i].num_apples = sample(num_apples)
@@ -179,7 +187,9 @@ def evaluate_agent(
     print(f"{'Metric':<15} | {'Average':<8} | {'Max':<8} | {'Std Dev':<8}")
     print("-" * BREAKER_WIDTH)
     for name, st in stats.items():
-        print(f"{name.capitalize():<15} | {st['avg']:<8.2f} | {st['max']:<8.2f} | {st['sd']:<8.2f}")
+        print(
+            f"{name.capitalize():<15} | {st['avg']:<8.2f} | {st['max']:<8.2f} | {st['sd']:<8.2f}"
+        )
 
     print("\nDeath Distribution:")
     for reason, count in sorted(death_dist.items(), key=lambda x: -x[1]):

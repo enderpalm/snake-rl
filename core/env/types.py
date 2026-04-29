@@ -1,12 +1,10 @@
-from enum import IntEnum, Enum
-from typing import Tuple, TypedDict
 from dataclasses import dataclass
-
+from enum import IntEnum, Enum, auto
+from typing import Tuple, Final
 
 class RenderMode(str, Enum):
     HUMAN = "human"
-    RGB_ARRAY = "rgb_array"
-
+    # Other render modes (e.g. text) could be added here in the future.
 
 class Action(IntEnum):
     LEFT = 0
@@ -32,19 +30,15 @@ DIR_OFFSETS = {
     Direction.LEFT: (0, -1),
 }
 
-
 class GridType(IntEnum):
-    EMPTY = 0
-    HEAD = 1
-    APPLE = 2
-    BODY = 3
-    OBSTACLE = -1
+    EMPTY = auto()
+    SNAKE = auto()
+    APPLE = auto()
+    OBSTACLE = auto()
 
-
-class ObserveType:
-    FULL = -1
-    VEC_11 = 0
-    # Any positive int > 0 is implicitly treated as a CNN radius
+class ObserveType(Enum):
+    FULL_GRID = auto()
+    VEC_11 = auto()
 
 
 class DeathReason(str, Enum):
@@ -54,22 +48,29 @@ class DeathReason(str, Enum):
     TRUNCATED = "truncated"
 
 
-# -------------------------------- TypedDicts -------------------------------- #
+# ------------------ Shared Dataclasses with default values ------------------ #
+
+@dataclass(frozen=True)
+class RewardOptions:
+    eats_apple: float = 10.0
+    complete: float = 50.0
+    penalty_step: float = -0.1
+    penalty_loop: float = -1.0
+    death_wall: float = -10.0
+    death_self: float = -10.0
+    shaping_closer: float = 0.5
+    shaping_further: float = -0.5
 
 
-class RenderOptions(TypedDict, total=False):
-    cell_size: int
-    render_fps: int
-    agent_color: Tuple[int, int, int]
+DEFAULT_REWARD: Final = RewardOptions()
 
 
 @dataclass
-class RewardOptions:
-    reward_apple: float = 10.0
-    reward_step: float = -0.01
-    reward_loop_penalty: float = -0.1
-    reward_complete: float = 50.0
-    reward_death_wall: float = -10.0
-    reward_death_self: float = -10.0
-    reward_shaping_closer: float = 0.1
-    reward_shaping_further: float = -0.2
+class RenderOptions():
+    cell_size: int = 40
+    render_fps: int = 30
+    agent_color: Tuple[int, int, int] = (52, 211, 153)
+
+DEFAULT_RENDER_OPTIONS: Final = RenderOptions()
+
+
