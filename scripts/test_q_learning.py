@@ -12,8 +12,8 @@ def run_test():
         num_apples=2,
         num_episodes=3,
         render_mode=RenderMode.HUMAN,
-        seed=67,
-        render_options=RenderOptions(agent_color=(190,128,250)),
+        seed=68,
+        render_options=RenderOptions(agent_color=(190,128,250), render_fps=100000),
     )
 
 if __name__ == "__main__":

@@ -42,10 +42,10 @@ class ObserveType(Enum):
 
 
 class DeathReason(str, Enum):
-    WALL = "wall"
-    SELF = "self"
-    COMPLETE = "complete"
-    TRUNCATED = "truncated"
+    WALL = "Wall"
+    SELF = "Self"
+    COMPLETE = "Complete"
+    TRUNCATED = "Truncated"
 
 
 # ------------------ Shared Dataclasses with default values ------------------ #

@@ -23,6 +23,9 @@ from core.env.types import (
 )
 
 class Snake:
+    
+    STARTING_LENGTH = 3
+    
     def __init__(
         self,
         start_pos: Tuple[int, int],
@@ -49,9 +52,6 @@ class Snake:
 
 
 # --------------- SnakeEnv: Single-agent Gymnasium environment --------------- #
-
-
-
 
 class SnakeEnv(gym.Env):
     """
@@ -126,15 +126,27 @@ class SnakeEnv(gym.Env):
         super().reset(seed=seed)
 
         self.step_count = 0
-        self.snake = Snake(
-            start_pos=(self.height // 2, self.width // 2),
-            length=3,
-            dir=Direction(self.np_random.integers(0, 4)),
-        )
         self.apples.clear()
         self.obstacles.clear()
         self.grid.fill(GridType.EMPTY)
+        
+        # Spawning a snake
+        snake_length = min(Snake.STARTING_LENGTH, self.width, self.height)
+        start_pos = (self.height // 2, self.width // 2)
+        direction = Direction(self.np_random.integers(0, 4))
+        dy, dx = DIR_OFFSETS[direction]
 
+        # Check if the snake fits within the grid: don't mind for obstacles for now...
+        for i in range(snake_length):
+            r, c = start_pos[0] - dy * i, start_pos[1] - dx * i
+            if not (0 <= r < self.height and 0 <= c < self.width):
+                # If out of bounds, adjust direction to fit
+                direction = Direction((direction + 2) % 4)  # Reverse direction
+                dy, dx = DIR_OFFSETS[direction]
+                break
+            
+        self.snake = Snake(start_pos=start_pos, length=snake_length, dir=direction)
+        
         for r, c in self.snake.body:
             self.grid[r, c] = GridType.SNAKE
 
