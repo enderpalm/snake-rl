@@ -14,15 +14,14 @@ from core.env.types import Action
 
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
-LR = 0.001
 class DQNAgent(Agent):
-    def __init__(self):
+    def __init__(self, lr, hidden_size, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.9995, seed=None):
         self.number_games = 0
-        self.epsilon = 0 #randomness
-        self.gamma = 0 #discount rate
+        self.epsilon = epsilon #randomness
+        self.gamma = self.gamma #discount rate
         self.memory = deque(maxlen=MAX_MEMORY) #popleft()
-        self.model = Linear_QNet(11, 256, 3)
-        self.trainer = DQNTrainer(self.model, lr=LR, gamma=self.gamma)
+        self.model = Linear_QNet(11, hidden_size, 3)
+        self.trainer = DQNTrainer(self.model, lr=lr, gamma=self.gamma)
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done)) # popleft if MAX_MEMORY is reached
@@ -39,31 +38,27 @@ class DQNAgent(Agent):
         self.trainer.train_step(state, action, reward, next_state, done)
 
     def act(self, state: np.ndarray, info: Optional[dict] = None) -> Action:
-        pass
-    
-    def train(self, mode: bool = True) -> None:
-        pass
+        if self.rng.random() < self.epsilon:
+            action_idx = int(self.rng.integers(3))
+        else:
+            prediction = self.model(torch.tensor(state, dtype=torch.float))
+            action_idx = int(torch.argmax(prediction).item())
+        return Action(action_idx)
 
-    def update(self, state, action, reward, next_state, done):
-        return super().update(state, action, reward, next_state, done)
+    def train(self, mode: bool = True) -> None:
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
     
     def save(self, file_name='model.pth'):
         self.model.save(file_name)
 
     def load(self, path):
-        return super().load(path)
-    
-    def get_action(self, state):
-        # random moves: tradeoff exploration / exploitation
-        self.epsilon = 80 - self.number_games
-        final_move = [0,0,0]
-        if random.randint(0, 200) < self.epsilon:
-            final_move[random.randint(0, 2)] = 1
+        if os.path.isfile(path):
+            self.model.load_state_dict(torch.load(path))
+            self.model.eval()
+            self.epsilon = 0
+            print(f"Loaded model from {path}")
         else:
-            state0 = torch.tensor(state, dtype=torch.float)
-            prediction = self.model(state0) # predict action based on the current state
-            final_move[torch.argmax(prediction).item()] = 1 
-        return final_move
+            print(f"Model file not found at {path}. Starting with untrained model.")
     
 class Linear_QNet(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -118,8 +113,6 @@ class DQNTrainer:
         self.optimizer.step()
 
 def train():
-    plot_scores = []
-    plot_mean_scores = []
     total_score = 0
     record = 0
     agent = DQNAgent()
