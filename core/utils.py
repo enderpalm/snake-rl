@@ -11,9 +11,15 @@ from typing import Any, Tuple
 from gymnasium.vector import SyncVectorEnv
 from agents.base import Agent
 from core.env.core import RenderOptions, RewardOptions, SnakeEnv
-from core.env.types import DEFAULT_RENDER_OPTIONS, DEFAULT_REWARD, ObserveType, RenderMode
+from core.env.types import (
+    DEFAULT_RENDER_OPTIONS,
+    DEFAULT_REWARD,
+    ObserveType,
+    RenderMode,
+)
 
 METRIC_PATH = "../artifacts/metrics/"
+
 
 def _info_for_env_idx(
     infos: dict[str, Any] | None, env_idx: int, num_envs: int
@@ -34,13 +40,16 @@ def _info_for_env_idx(
             out[k] = v
     return out
 
-def _print_summary_table(stats: dict[str, dict[str, float]], death_dist: dict[str, int]) -> None:
+
+def _print_summary_table(
+    stats: dict[str, dict[str, float]], death_dist: dict[str, int]
+) -> None:
     console = Console()
 
     # Create a table for metrics
     metrics_table = Table(title="Evaluation Metrics", box=ROUNDED, title_justify="left")
     metrics_table.add_column("Metric", justify="left", no_wrap=True)
-    
+
     for key in next(iter(stats.values())).keys():
         metrics_table.add_column(key, justify="right")
 
@@ -63,9 +72,10 @@ def _print_summary_table(stats: dict[str, dict[str, float]], death_dist: dict[st
     for reason, count in sorted(death_dist.items(), key=lambda x: -x[1]):
         percentage = (count / total_deaths) * 100 if total_deaths > 0 else 0
         death_table.add_row(reason, str(count), f"{percentage:.1f}%")
-    
+
     console.print(metrics_table)
     console.print(death_table)
+
 
 def evaluate_agent(
     agent: Agent,
@@ -89,7 +99,7 @@ def evaluate_agent(
         np.random.seed(seed)
 
     def sample(v):
-        return (random.randint(*v) if isinstance(v, tuple) else v)
+        return random.randint(*v) if isinstance(v, tuple) else v
 
     def make_env(env_id: int):
         env_seed = (seed + env_id) if seed is not None else None
@@ -136,7 +146,9 @@ def evaluate_agent(
             ]
 
             if render_mode is RenderMode.HUMAN and num_envs >= 1:
-                setattr(env.envs[0], "mcts_panel", getattr(agent, "last_mcts_panel", None))
+                setattr(
+                    env.envs[0], "mcts_panel", getattr(agent, "last_mcts_panel", None)
+                )
 
             next_obs, rewards_arr, dones, truncs, infos = env.step(actions)
             ep_rewards += rewards_arr
@@ -194,13 +206,14 @@ def evaluate_agent(
         }
 
     stats = {k: agg(v) for k, v in metrics.items()}
-    
+
     _print_summary_table(stats, death_dist)
 
     if hasattr(agent, "log_decision_stats"):
         agent.log_decision_stats()
 
     return stats["rewards"], stats["apples"], stats["steps"], death_dist
+
 
 def save_metrics(logs: list[dict], filepath: str) -> None:
     """Save a list of log dictionaries to a CSV file.

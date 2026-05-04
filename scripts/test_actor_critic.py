@@ -2,6 +2,7 @@ from agents.actor_critic import ActorCriticAgent
 from core.env.core import RewardOptions
 from core.utils import evaluate_agent
 
+
 def run_test():
     ac_agent = ActorCriticAgent(state_dim=11, action_dim=3, seed=67)
 
@@ -27,7 +28,6 @@ def run_test():
         ),
     )
 
+
 if __name__ == "__main__":
     run_test()
-
-

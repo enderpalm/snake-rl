@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 from core.env.types import DIR_OFFSETS, Direction, GridType
 
 
-def observe_vec11(env: "SnakeEnv") -> npt.NDArray[np.uint8]:  
+def observe_vec11(env: "SnakeEnv") -> npt.NDArray[np.uint8]:
     # Numpy boolean still uses 1 byte, use uint8 to be unified type with more complex observations
     if not env.snake:
         return np.zeros(11, dtype=np.uint8)

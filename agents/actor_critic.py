@@ -10,6 +10,7 @@ from typing import Optional
 from agents.base import Agent
 from core.env.types import Action
 
+
 class ActorCriticNet(nn.Module):
     def __init__(self, input_dim=11, action_dim=3):
         super(ActorCriticNet, self).__init__()
@@ -24,6 +25,7 @@ class ActorCriticNet(nn.Module):
         probs = F.softmax(self.actor(x), dim=-1)
         state_value = self.critic(x)
         return probs, state_value
+
 
 class ActorCriticAgent(Agent):
     def __init__(
@@ -45,10 +47,10 @@ class ActorCriticAgent(Agent):
         state_t = torch.from_numpy(state).float().to(self.device)
         if state_t.dim() == 1:
             state_t = state_t.unsqueeze(0)
-            
+
         with torch.no_grad():
             probs, _ = self.model(state_t)
-        
+
         # Sampling handles exploration naturally
         dist = Categorical(probs)
         action_idx = dist.sample().item()
@@ -56,13 +58,13 @@ class ActorCriticAgent(Agent):
 
     def update(
         self,
-        state: np.ndarray, # These can be batches for your loop
+        state: np.ndarray,  # These can be batches for your loop
         action: int,
         reward: np.ndarray,
         next_state: np.ndarray,
         done: np.ndarray,
-        log_probs: Optional[torch.Tensor] = None, # Extra args for parallel efficiency
-        values: Optional[torch.Tensor] = None
+        log_probs: Optional[torch.Tensor] = None,  # Extra args for parallel efficiency
+        values: Optional[torch.Tensor] = None,
     ) -> None:
         # Prepare Tensors on GPU
         next_states_t = torch.from_numpy(next_state).float().to(self.device)
@@ -70,7 +72,7 @@ class ActorCriticAgent(Agent):
         dones_t = torch.from_numpy(done).float().to(self.device).unsqueeze(1)
 
         _, next_values = self.model(next_states_t)
-        
+
         # TD Target and Advantage
         td_targets = rewards_t + (1 - dones_t) * self.gamma * next_values
         advantages = td_targets - values
