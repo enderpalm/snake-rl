@@ -82,6 +82,7 @@ class SnakeEnv(gym.Env):
         render_options: RenderOptions = DEFAULT_RENDER_OPTIONS,
         reward_options: RewardOptions = DEFAULT_REWARD,
         snapshot_engine_state: bool = False,
+        check_available_space: bool = False,
     ):
         super().__init__()
         self.width, self.height, self.render_mode, self.obs_type, self.max_steps = (
@@ -110,6 +111,7 @@ class SnakeEnv(gym.Env):
         # For single-agent env, done is equivalent to 'snake not being alive'
         self.step_count = 0
         self.snapshot_engine_state = snapshot_engine_state
+        self.check_available_space = check_available_space
 
         # Initialize rendering
         self.ui = None
@@ -225,11 +227,12 @@ class SnakeEnv(gym.Env):
         info = {
             "death_reason": snake.last_death_reason if snake else None,
             "apples_eaten": snake.apples_eaten if snake else 0,
-            "available_space_ratio": self._available_head_space_ratio(),
             "steps_survived": self.step_count,
         }
         if self.snapshot_engine_state:
             info["engine_state"] = self.clone()
+        if self.check_available_space:
+            info["available_head_space_ratio"] = self._available_head_space_ratio()
         return info
 
     def _mark_dead(self, reason: DeathReason):
