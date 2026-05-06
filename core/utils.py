@@ -23,9 +23,7 @@ from gymnasium.wrappers import FrameStackObservation
 METRIC_PATH = "../artifacts/metrics/"
 
 
-def _info_for_env_idx(
-    infos: dict[str, Any] | None, env_idx: int, num_envs: int
-) -> dict[str, Any] | None:
+def _info_for_env_idx(infos: dict[str, Any] | None, env_idx: int, num_envs: int) -> dict[str, Any] | None:
     """Extract the info dict for a single sub-env from SyncVectorEnv batched infos."""
     if not infos:
         return None
@@ -59,9 +57,7 @@ def _aggregate_metrics(lst: list[float]) -> dict[str, float]:
     }
 
 
-def _print_summary_table(
-    stats: dict[str, dict[str, float]], death_dist: dict[str, int]
-) -> None:
+def _print_summary_table(stats: dict[str, dict[str, float]], death_dist: dict[str, int]) -> None:
     console = Console()
 
     # Create a table for metrics
@@ -110,6 +106,7 @@ def evaluate_agent(
     max_steps: int = 2000,
     seed: int | None = None,
     snapshot_engine_state: bool = False,
+    check_available_space: bool = True,
     frame_stack: int = 1,
 ) -> tuple[dict, dict, dict, dict]:
     # determinism
@@ -133,6 +130,7 @@ def evaluate_agent(
                 reward_options=reward_options,
                 max_steps=max_steps,
                 snapshot_engine_state=snapshot_engine_state,
+                check_available_space=check_available_space,
             )
             if frame_stack > 1:
                 env = FrameStackObservation(env, stack_size=frame_stack)
@@ -150,7 +148,17 @@ def evaluate_agent(
     if hasattr(agent, "reset_decision_stats"):
         agent.reset_decision_stats()
 
-    metrics = {"rewards": [], "apples": [], "steps": []}
+    metrics = {
+        "rewards": [],
+        "apples": [],
+        "steps": [],
+        "final_length": [],
+        "steps_per_apple": [],
+        "left_rate": [],
+        "straight_rate": [],
+        "right_rate": [],
+        "final_space_ratio": [],
+    }
     death_dist: dict = {}
     ep_rewards = np.zeros(num_envs, dtype=float)
     ep_steps = np.zeros(num_envs, dtype=int)
@@ -163,15 +171,10 @@ def evaluate_agent(
     ) as pbar:
         while completed < num_episodes:
             # collect actions for each sub-env
-            actions = [
-                agent.act(obs[i], _info_for_env_idx(infos, i, num_envs))
-                for i in range(num_envs)
-            ]
+            actions = [agent.act(obs[i], _info_for_env_idx(infos, i, num_envs)) for i in range(num_envs)]
 
             if render_mode is RenderMode.HUMAN and num_envs >= 1:
-                setattr(
-                    env.envs[0], "mcts_panel", getattr(agent, "last_mcts_panel", None)
-                )
+                setattr(env.envs[0], "mcts_panel", getattr(agent, "last_mcts_panel", None))
 
             next_obs, rewards_arr, dones, truncs, infos = env.step(actions)
             ep_rewards += rewards_arr
@@ -186,12 +189,29 @@ def evaluate_agent(
                     ep_rewards[i] = ep_steps[i] = 0
                     continue
 
+                # Gymnasium injects the pre-reset terminal state into final_info
                 info_i = _info_for_env_idx(infos, i, num_envs) or {}
-                metrics["rewards"].append(float(ep_rewards[i]))
-                metrics["steps"].append(int(ep_steps[i]))
-                metrics["apples"].append(int(info_i.get("apples_eaten", 0)))
+                final_info = info_i.get("final_info", info_i)
 
-                death_reason = info_i.get("death_reason")
+                apples = int(final_info.get("apples_eaten", 0))
+                steps = int(ep_steps[i])
+
+                metrics["rewards"].append(float(ep_rewards[i]))
+                metrics["steps"].append(steps)
+                metrics["apples"].append(apples)
+                metrics["final_length"].append(int(final_info.get("snake_length", 0)))
+                metrics["steps_per_apple"].append(steps / max(1, apples))
+
+                action_counts = final_info.get("action_counts", np.zeros(3, dtype=np.int32))
+                total_steps = max(1, steps)
+                metrics["left_rate"].append(action_counts[0] / total_steps)
+                metrics["straight_rate"].append(action_counts[1] / total_steps)
+                metrics["right_rate"].append(action_counts[2] / total_steps)
+
+                if "available_head_space_ratio" in final_info:
+                    metrics["final_space_ratio"].append(float(final_info["available_head_space_ratio"]))
+
+                death_reason = final_info.get("death_reason")
                 if death_reason:
                     death_dist[death_reason] = death_dist.get(death_reason, 0) + 1
 
@@ -204,7 +224,7 @@ def evaluate_agent(
                     print(
                         f"Episode {completed}/{num_episodes} - "
                         f"Reward: {ep_rewards[i]:.2f}, Steps: {ep_steps[i]}, "
-                        f"Apples: {info_i.get('apples_eaten', 0)}, "
+                        f"Apples: {apples}, "
                         f"Death: {getattr(death_reason, 'value', death_reason) or 'None'}"
                     )
                 else:
@@ -239,9 +259,7 @@ def save_metrics(logs: list[dict], filepath: str) -> None:
     if not logs:
         return
 
-    filepath = (
-        METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
-    )
+    filepath = METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
     filepath_obj = Path(filepath)
     filepath_obj.parent.mkdir(parents=True, exist_ok=True)
 

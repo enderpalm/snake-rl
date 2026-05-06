@@ -112,6 +112,7 @@ class SnakeEnv(gym.Env):
         self.step_count = 0
         self.snapshot_engine_state = snapshot_engine_state
         self.check_available_space = check_available_space
+        self.action_counts = np.zeros(3, dtype=np.int32)
 
         # Initialize rendering
         self.ui = None
@@ -137,6 +138,7 @@ class SnakeEnv(gym.Env):
         super().reset(seed=seed)
 
         self.step_count = 0
+        self.action_counts.fill(0)
         self.apples.clear()
         self.obstacles.clear()
         self.grid.fill(GridType.EMPTY)
@@ -230,6 +232,8 @@ class SnakeEnv(gym.Env):
             "death_reason": snake.last_death_reason if snake else None,
             "apples_eaten": snake.apples_eaten if snake else 0,
             "steps_survived": self.step_count,
+            "snake_length": len(snake.body) if snake else 0,
+            "action_counts": self.action_counts.copy(),
         }
         if self.snapshot_engine_state:
             info["engine_state"] = self.clone()
@@ -257,6 +261,8 @@ class SnakeEnv(gym.Env):
         apples = self.apples
         obstacles = self.obstacles
         rewards = self.rewards
+
+        self.action_counts[action] += 1
 
         snake.dir = Direction((snake.dir + action - 1) % 4)
         head_r, head_c = snake.body[0]
@@ -349,6 +355,7 @@ class SnakeEnv(gym.Env):
         )  # Shallow copy
         new_env.grid = self.grid.copy()
         new_env.step_count = self.step_count
+        new_env.action_counts = self.action_counts.copy()
         return new_env
 
     def render(self):
