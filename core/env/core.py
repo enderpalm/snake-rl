@@ -126,7 +126,9 @@ class SnakeEnv(gym.Env):
         self.observation_space = (
             spaces.MultiBinary(11)
             if self.obs_type == ObserveType.VEC_11
-            else spaces.Box(low=0, high=3, shape=(3, height, width), dtype=np.uint8)
+            else spaces.Box(
+                low=0.0, high=1.0, shape=(4, height, width), dtype=np.float32
+            )
         )
 
     def reset(

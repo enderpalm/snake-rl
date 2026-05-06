@@ -45,8 +45,9 @@ class ReplayBuffer:
         """
         Add a new batch of transitions to the buffer.
         """
-        # Ensure dimensions match expected (n_envs, ...)
-        np.copyto(self.observe[self.pos], observe)
+        # Ensure dimensions match expected (n_envs, ...).
+        # Safely cast float32 Box outputs (like 0.0, 1.0) to uint8 to fit our optimized buffer.
+        np.copyto(self.observe[self.pos], observe.astype(np.uint8, copy=False))
         np.copyto(self.actions[self.pos], action)
         np.copyto(self.rewards[self.pos], reward)
         np.copyto(self.dones[self.pos], done)
@@ -57,7 +58,9 @@ class ReplayBuffer:
             # If the episode ended here, save the true final frame
             self.terminal_obs.pop((self.pos, env_idx), None)
             if done[env_idx]:
-                self.terminal_obs[(self.pos, env_idx)] = next_observe[env_idx].copy()
+                self.terminal_obs[(self.pos, env_idx)] = (
+                    next_observe[env_idx].astype(np.uint8, copy=False).copy()
+                )
 
         self.pos += 1
         if self.pos == self.buffer_size:

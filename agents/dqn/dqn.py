@@ -8,6 +8,7 @@ from typing import Optional, Dict
 from tqdm import tqdm
 from agents.base import Agent
 from agents.dqn.replay_buffer import ReplayBuffer
+from util import log_and_save_progress
 
 
 class BaseDQNAgent(Agent):
@@ -61,6 +62,7 @@ class BaseDQNAgent(Agent):
         self.device = device
         self.seed = seed
         self.model_file = model_file
+        self.replay_buffer: ReplayBuffer | None = None
 
     def act(self, state: np.ndarray, info: dict | None = None) -> np.ndarray:
         n_envs = state.shape[0] if state.ndim > 1 and state.shape[0] > 1 else 1
@@ -69,7 +71,9 @@ class BaseDQNAgent(Agent):
             return self.rng.integers(0, 3, size=(n_envs,))
 
         with torch.no_grad():
-            state_tensor = torch.as_tensor(state, dtype=torch.uint8, device=self.device)
+            state_tensor = torch.as_tensor(
+                state, dtype=torch.float32, device=self.device
+            )
             if n_envs == 1 and state_tensor.ndim in [1, 3]:
                 state_tensor = state_tensor.unsqueeze(0)
 
@@ -92,7 +96,7 @@ class BaseDQNAgent(Agent):
         if not self.replay_buffer:
             self.replay_buffer = ReplayBuffer(
                 buffer_size=self.buffer_size,
-                observe_shape=env.single_observation_space,
+                observe_shape=env.single_observation_space.shape,
                 n_envs=env.num_envs,
                 device=self.device,
                 seed=self.seed,
@@ -127,21 +131,18 @@ class BaseDQNAgent(Agent):
                 current_rewards += rewards
                 current_lengths += 1
 
-                for idx, is_done in enumerate(dones):
-                    if is_done:
-                        episode_rewards.append(float(current_rewards[idx]))
-                        episode_lengths.append(float(current_lengths[idx]))
-                        current_rewards[idx] = 0
-                        current_lengths[idx] = 0
+                for idx in dones.nonzero()[0]:
+                    episode_rewards.append(float(current_rewards[idx]))
+                    episode_lengths.append(float(current_lengths[idx]))
+                    current_rewards[idx] = 0
+                    current_lengths[idx] = 0
 
                 # Update exploration rate
-                decay_steps = int(total_timesteps * self.eps_decay)
-                if step < decay_steps:
-                    self.eps = self.eps_init - (self.eps_init - self.eps_final) * (
-                        step / decay_steps
-                    )
-                else:
-                    self.eps = self.eps_final
+                decay_steps = max(1, int(total_timesteps * self.eps_decay))
+                decay_progress = min(1.0, step / decay_steps)
+                self.eps = (
+                    self.eps_init - (self.eps_init - self.eps_final) * decay_progress
+                )
 
                 # Train the network
                 if step > self.learning_starts and step % self.train_freq == 0:
@@ -153,26 +154,15 @@ class BaseDQNAgent(Agent):
                 pbar.update(1)
 
                 # Periodically log best reward and save model
-                if step > 0 and step % self.log_step == 0:
-                    if len(episode_rewards) >= 100:
-                        recent_avg = np.mean(episode_rewards[-100:])
-                        if recent_avg > best_reward:
-                            best_reward = recent_avg
-                            self.save(self.model_file)
-                        pbar.set_postfix(
-                            {
-                                "Avg Rwd (100)": f"{recent_avg:.2f}",
-                                "Best": f"{best_reward:.2f}",
-                                "Eps": f"{self.eps:.3f}",
-                            }
-                        )
-                    elif len(episode_rewards) > 0:
-                        pbar.set_postfix(
-                            {
-                                "Last Rwd": f"{episode_rewards[-1]:.2f}",
-                                "Eps": f"{self.eps:.3f}",
-                            }
-                        )
+                best_reward = log_and_save_progress(
+                    step=step,
+                    log_step=self.log_step,
+                    episode_rewards=episode_rewards,
+                    best_reward=best_reward,
+                    pbar=pbar,
+                    eps=self.eps,
+                    save_callback=lambda: self.save(self.model_file),
+                )
 
         return {
             "episode_rewards": episode_rewards,
@@ -199,7 +189,7 @@ class BaseDQNAgent(Agent):
         with torch.no_grad():
             next_q_values = self.target_net(next_obs)
             max_next_q_sa = next_q_values.max(1, keepdim=True)[0]
-            target_q_values = rewards + (1 - dones) * self.gamma * max_next_q_sa
+            target_q_values = rewards + (~dones).float() * self.gamma * max_next_q_sa
 
         # Loss & Backprop
         loss = F.mse_loss(q_sa, target_q_values)
@@ -211,9 +201,7 @@ class BaseDQNAgent(Agent):
         for param, target_param in zip(
             self.q_net.parameters(), self.target_net.parameters()
         ):
-            target_param.data.copy_(
-                self.tau * param.data + (1 - self.tau) * target_param.data
-            )
+            target_param.data.lerp_(param.data, self.tau)
 
         return loss.item()
 

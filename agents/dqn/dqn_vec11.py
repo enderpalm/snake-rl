@@ -25,7 +25,7 @@ class DQNVec11Agent(BaseDQNAgent):
         self,
         hidden_dim: int = 64,
         learning_rate: float = 1e-3,
-        weight_decay: float = 0.0,
+        weight_decay: float = 0.1,
         buffer_size: int = 100000,
         batch_size: int = 64,
         gamma: float = 0.99,

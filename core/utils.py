@@ -18,6 +18,8 @@ from core.env.types import (
     RenderMode,
 )
 
+from gymnasium.wrappers import FrameStackObservation
+
 METRIC_PATH = "../artifacts/metrics/"
 
 
@@ -39,6 +41,22 @@ def _info_for_env_idx(
         else:
             out[k] = v
     return out
+
+
+def _sample_range(v: int | Tuple[int, int]) -> int:
+    """Sample from a range if a tuple is provided, else return the value."""
+    return random.randint(*v) if isinstance(v, tuple) else v
+
+
+def _aggregate_metrics(lst: list[float]) -> dict[str, float]:
+    """Compute statistical aggregates for a list of metrics."""
+    return {
+        "Average": float(np.mean(lst)) if lst else 0.0,
+        "Median": float(np.median(lst)) if lst else 0.0,
+        "Min": float(np.min(lst)) if lst else 0.0,
+        "Max": float(np.max(lst)) if lst else 0.0,
+        "Std Dev": float(np.std(lst)) if lst else 0.0,
+    }
 
 
 def _print_summary_table(
@@ -92,30 +110,35 @@ def evaluate_agent(
     max_steps: int = 2000,
     seed: int | None = None,
     snapshot_engine_state: bool = False,
+    frame_stack: int = 1,
 ) -> tuple[dict, dict, dict, dict]:
     # determinism
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
 
-    def sample(v):
-        return random.randint(*v) if isinstance(v, tuple) else v
-
     def make_env(env_id: int):
         env_seed = (seed + env_id) if seed is not None else None
-        return lambda: SnakeEnv(
-            render_mode=render_mode,
-            width=width,
-            height=height,
-            obs_type=obs_type,
-            num_apples=sample(num_apples),
-            num_obstacles=sample(num_obstacles),
-            seed=env_seed,
-            render_options=render_options,
-            reward_options=reward_options,
-            max_steps=max_steps,
-            snapshot_engine_state=snapshot_engine_state,
-        )
+
+        def _init():
+            env = SnakeEnv(
+                render_mode=render_mode,
+                width=width,
+                height=height,
+                obs_type=obs_type,
+                num_apples=_sample_range(num_apples),
+                num_obstacles=_sample_range(num_obstacles),
+                seed=env_seed,
+                render_options=render_options,
+                reward_options=reward_options,
+                max_steps=max_steps,
+                snapshot_engine_state=snapshot_engine_state,
+            )
+            if frame_stack > 1:
+                env = FrameStackObservation(env, stack_size=frame_stack)
+            return env
+
+        return _init
 
     if render_mode == RenderMode.HUMAN:
         print("Rendering enabled. Single environment will be run at a time.")
@@ -173,8 +196,8 @@ def evaluate_agent(
                     death_dist[death_reason] = death_dist.get(death_reason, 0) + 1
 
                 # re-sample environment boundaries for the slot
-                env.envs[i].num_apples = sample(num_apples)
-                env.envs[i].num_obstacles = sample(num_obstacles)
+                env.envs[i].num_apples = _sample_range(num_apples)
+                env.envs[i].num_obstacles = _sample_range(num_obstacles)
 
                 completed += 1
                 if render_mode is RenderMode.HUMAN:
@@ -196,16 +219,7 @@ def evaluate_agent(
 
     env.close()
 
-    def agg(lst):
-        return {
-            "Average": float(np.mean(lst)) if lst else 0.0,
-            "Median": float(np.median(lst)) if lst else 0.0,
-            "Min": float(np.min(lst)) if lst else 0.0,
-            "Max": float(np.max(lst)) if lst else 0.0,
-            "Std Dev": float(np.std(lst)) if lst else 0.0,
-        }
-
-    stats = {k: agg(v) for k, v in metrics.items()}
+    stats = {k: _aggregate_metrics(v) for k, v in metrics.items()}
 
     _print_summary_table(stats, death_dist)
 
