@@ -10,15 +10,13 @@ def run_test():
 
     evaluate_agent(
         ac_agent,
-        num_episodes=1000,
-        num_apples=(1, 3),
-        num_obstacles=(5, 12),
-        seed=67,
-        num_envs=16,
-        max_steps=10000,
+        num_obstacles=10,
+        num_apples=2,
+        num_episodes=3,
         render_mode=RenderMode.HUMAN,
+        seed=67,
+        snapshot_engine_state=True,
     )
-
 
 if __name__ == "__main__":
     run_test()
