@@ -92,7 +92,8 @@ class ActorCriticAgent(Agent):
         torch.save(self.model.state_dict(), path)
 
     def load(self, path: str) -> None:
-        path = self._modify_path(path)
         if os.path.exists(path):
             self.model.load_state_dict(torch.load(path, map_location=self.device))
             self.model.eval()
+        else:
+            print(f"Model file not found at {path}. Starting with untrained model.")
