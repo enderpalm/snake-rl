@@ -2,9 +2,11 @@ from dataclasses import dataclass
 from enum import IntEnum, Enum, auto
 from typing import Tuple, Final
 
+
 class RenderMode(str, Enum):
     HUMAN = "human"
     # Other render modes (e.g. text) could be added here in the future.
+
 
 class Action(IntEnum):
     LEFT = 0
@@ -30,11 +32,13 @@ DIR_OFFSETS = {
     Direction.LEFT: (0, -1),
 }
 
+
 class GridType(IntEnum):
     EMPTY = auto()
     SNAKE = auto()
     APPLE = auto()
     OBSTACLE = auto()
+
 
 class ObserveType(Enum):
     FULL_GRID = auto()
@@ -49,6 +53,7 @@ class DeathReason(str, Enum):
 
 
 # ------------------ Shared Dataclasses with default values ------------------ #
+
 
 @dataclass(frozen=True)
 class RewardOptions:
@@ -66,11 +71,10 @@ DEFAULT_REWARD: Final = RewardOptions()
 
 
 @dataclass
-class RenderOptions():
+class RenderOptions:
     cell_size: int = 40
     render_fps: int = 30
     agent_color: Tuple[int, int, int] = (52, 211, 153)
 
+
 DEFAULT_RENDER_OPTIONS: Final = RenderOptions()
-
-

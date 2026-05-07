@@ -22,10 +22,10 @@ from core.env.types import (
     RewardOptions,
 )
 
+
 class Snake:
-    
     STARTING_LENGTH = 3
-    
+
     def __init__(
         self,
         start_pos: Tuple[int, int],
@@ -34,7 +34,9 @@ class Snake:
     ):
         self.dir, self.alive = dir, True
         dy, dx = DIR_OFFSETS[dir]
-        self.body: deque[Tuple[int, int]] = deque((start_pos[0] - dy * i, start_pos[1] - dx * i) for i in range(length))
+        self.body: deque[Tuple[int, int]] = deque(
+            (start_pos[0] - dy * i, start_pos[1] - dx * i) for i in range(length)
+        )
         self.recent_positions: deque[Tuple[int, int]] = deque(maxlen=20)
         self.last_death_reason: DeathReason | None = None
         self.total_rewards: float = 0.0
@@ -52,6 +54,7 @@ class Snake:
 
 
 # --------------- SnakeEnv: Single-agent Gymnasium environment --------------- #
+
 
 class SnakeEnv(gym.Env):
     """
@@ -79,6 +82,7 @@ class SnakeEnv(gym.Env):
         render_options: RenderOptions = DEFAULT_RENDER_OPTIONS,
         reward_options: RewardOptions = DEFAULT_REWARD,
         snapshot_engine_state: bool = False,
+        check_available_space: bool = False,
     ):
         super().__init__()
         self.width, self.height, self.render_mode, self.obs_type, self.max_steps = (
@@ -100,11 +104,15 @@ class SnakeEnv(gym.Env):
         self.snake: Snake | None = None
         self.apples: set[Tuple[int, int]] = set()
         self.obstacles: set[Tuple[int, int]] = set()
-        self.grid = np.full((self.height, self.width), fill_value=GridType.EMPTY, dtype=np.uint8)
+        self.grid = np.full(
+            (self.height, self.width), fill_value=GridType.EMPTY, dtype=np.uint8
+        )
 
         # For single-agent env, done is equivalent to 'snake not being alive'
         self.step_count = 0
         self.snapshot_engine_state = snapshot_engine_state
+        self.check_available_space = check_available_space
+        self.action_counts = np.zeros(3, dtype=np.int32)
 
         # Initialize rendering
         self.ui = None
@@ -119,17 +127,22 @@ class SnakeEnv(gym.Env):
         self.observation_space = (
             spaces.MultiBinary(11)
             if self.obs_type == ObserveType.VEC_11
-            else spaces.Box(low=0, high=3, shape=(3, height, width), dtype=np.uint8)
+            else spaces.Box(
+                low=0.0, high=1.0, shape=(4, height, width), dtype=np.float32
+            )
         )
 
-    def reset(self, *, seed: int | None = None, options: dict | None = None) -> Tuple[Any, dict]:
+    def reset(
+        self, *, seed: int | None = None, options: dict | None = None
+    ) -> Tuple[Any, dict]:
         super().reset(seed=seed)
 
         self.step_count = 0
+        self.action_counts.fill(0)
         self.apples.clear()
         self.obstacles.clear()
         self.grid.fill(GridType.EMPTY)
-        
+
         # Spawning a snake
         snake_length = min(Snake.STARTING_LENGTH, self.width, self.height)
         start_pos = (self.height // 2, self.width // 2)
@@ -144,9 +157,9 @@ class SnakeEnv(gym.Env):
                 direction = Direction((direction + 2) % 4)  # Reverse direction
                 dy, dx = DIR_OFFSETS[direction]
                 break
-            
+
         self.snake = Snake(start_pos=start_pos, length=snake_length, dir=direction)
-        
+
         for r, c in self.snake.body:
             self.grid[r, c] = GridType.SNAKE
 
@@ -154,11 +167,15 @@ class SnakeEnv(gym.Env):
         self._spawn_items(self.num_obstacles, self.obstacles, GridType.OBSTACLE)
         return self._get_observation(), self._get_info()
 
+    # ----------------------------- Set items on grid ---------------------------- #
+
     def _spawn_items(self, count: int, item_set: set, grid_type: GridType):
         empty = np.flatnonzero(self.grid == GridType.EMPTY)
         if empty.size == 0:
             return
-        for flat_idx in self.np_random.choice(empty, min(count, empty.size), replace=False):
+        for flat_idx in self.np_random.choice(
+            empty, min(count, empty.size), replace=False
+        ):
             r, c = divmod(flat_idx, self.width)
             item_set.add((r, c))
             self.grid[r, c] = grid_type
@@ -181,6 +198,28 @@ class SnakeEnv(gym.Env):
         r, c = self.snake.body[0]
         return min(abs(r - ar) + abs(c - ac) for ar, ac in self.apples)  # L1 distance
 
+    def _available_head_space_ratio(self) -> float:
+        if not self.snake:
+            return 0.0
+        queue = deque([self.snake.body[0]])
+        visited = set(queue)
+        obstacles = self.obstacles | set(self.snake.body)
+        count: int = 0
+        while queue:
+            r, c = queue.popleft()
+            count += 1
+            for dy, dx in DIR_OFFSETS.values():
+                nr, nc = r + dy, c + dx
+                if (
+                    0 <= nr < self.height
+                    and 0 <= nc < self.width
+                    and (nr, nc) not in visited
+                    and (nr, nc) not in obstacles
+                ):
+                    visited.add((nr, nc))
+                    queue.append((nr, nc))
+        return count / (self.width * self.height - len(obstacles))
+
     def _get_observation(self) -> npt.NDArray[np.uint8]:
         if self.obs_type == ObserveType.FULL_GRID:
             return obs.observe_full_grid(self)
@@ -192,9 +231,14 @@ class SnakeEnv(gym.Env):
         info = {
             "death_reason": snake.last_death_reason if snake else None,
             "apples_eaten": snake.apples_eaten if snake else 0,
+            "steps_survived": self.step_count,
+            "snake_length": len(snake.body) if snake else 0,
+            "action_counts": self.action_counts.copy(),
         }
         if self.snapshot_engine_state:
             info["engine_state"] = self.clone()
+        if self.check_available_space:
+            info["available_head_space_ratio"] = self._available_head_space_ratio()
         return info
 
     def _mark_dead(self, reason: DeathReason):
@@ -206,7 +250,9 @@ class SnakeEnv(gym.Env):
             if self.grid[br, bc] is GridType.SNAKE:
                 self.grid[br, bc] = GridType.EMPTY
 
-    def step(self, action: Action) -> Tuple[npt.NDArray[np.uint8], SupportsFloat, bool, bool, dict]:
+    def step(
+        self, action: Action
+    ) -> Tuple[npt.NDArray[np.uint8], SupportsFloat, bool, bool, dict]:
         snake = self.snake
         if not snake or not snake.alive:
             return self._get_observation(), 0.0, True, False, self._get_info()
@@ -215,6 +261,8 @@ class SnakeEnv(gym.Env):
         apples = self.apples
         obstacles = self.obstacles
         rewards = self.rewards
+
+        self.action_counts[action] += 1
 
         snake.dir = Direction((snake.dir + action - 1) % 4)
         head_r, head_c = snake.body[0]
@@ -227,11 +275,15 @@ class SnakeEnv(gym.Env):
 
         # movement & collision handling
         pr, pc = new_head
-        if (not (0 <= pr < self.height and 0 <= pc < self.width)) or grid[new_head] == GridType.OBSTACLE:
+        if (not (0 <= pr < self.height and 0 <= pc < self.width)) or grid[
+            new_head
+        ] == GridType.OBSTACLE:
             # Snake new head is out of bounds or hits an obstacle
             self._mark_dead(DeathReason.WALL)
             reward += rewards.death_wall
-        elif grid[new_head] == GridType.SNAKE and not (new_head == snake.body[-1] and new_head not in apples):
+        elif grid[new_head] == GridType.SNAKE and not (
+            new_head == snake.body[-1] and new_head not in apples
+        ):
             # Snake collides with itself (note: allow moving into the tail if it's not eating an apple,
             # since the tail will move away in the same step)
             self._mark_dead(DeathReason.SELF)
@@ -276,7 +328,13 @@ class SnakeEnv(gym.Env):
         else:
             self.step_count += 1
 
-        return self._get_observation(), reward, not snake.alive, truncated, self._get_info()
+        return (
+            self._get_observation(),
+            reward,
+            not snake.alive,
+            truncated,
+            self._get_info(),
+        )
 
     def clone(self) -> "SnakeEnv":
         new_env = SnakeEnv(
@@ -291,9 +349,13 @@ class SnakeEnv(gym.Env):
         new_env.np_random.bit_generator.state = self.np_random.bit_generator.state
         if self.snake:
             new_env.snake = self.snake.clone()
-        new_env.apples, new_env.obstacles = set(self.apples), set(self.obstacles)  # Shallow copy
+        new_env.apples, new_env.obstacles = (
+            set(self.apples),
+            set(self.obstacles),
+        )  # Shallow copy
         new_env.grid = self.grid.copy()
         new_env.step_count = self.step_count
+        new_env.action_counts = self.action_counts.copy()
         return new_env
 
     def render(self):

@@ -13,8 +13,9 @@ def run_test():
         num_episodes=3,
         render_mode=RenderMode.HUMAN,
         seed=67,
-        render_options=RenderOptions(agent_color=(190,128,250)),
+        render_options=RenderOptions(agent_color=(190, 128, 250)),
     )
+
 
 if __name__ == "__main__":
     run_test()

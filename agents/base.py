@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import os
-from typing import Optional
+from typing import Optional, Union
 import numpy as np
 from core.env.types import Action
 
@@ -16,9 +16,12 @@ class Agent(ABC):
         self.rng = np.random.default_rng(seed)
 
     @abstractmethod
-    def act(self, state: np.ndarray, info: Optional[dict] = None) -> Action:
+    def act(
+        self, state: np.ndarray, info: Optional[dict] = None
+    ) -> Union[Action, np.ndarray]:
         """
         Given the current state (observation), returns the chosen action.
+        Supports single environment (Action) and batched environments (np.ndarray).
         """
         pass
 

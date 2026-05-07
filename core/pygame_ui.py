@@ -17,6 +17,7 @@ SEGMENT_MARGIN = 2
 TAIL_ALPHA = 0.5
 JETBRAINS_FONT_SIZE = 16
 
+
 class PygameUI:
     def __init__(
         self,
@@ -128,7 +129,7 @@ class PygameUI:
                 )
                 env.set_item_dyn((r, c), grid_type, b1)
         return True
-    
+
     # ---------------- Components-drawing methods and render loop ---------------- #
 
     def _draw_grid(self, screen, env):
