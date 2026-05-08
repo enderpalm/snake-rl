@@ -23,7 +23,9 @@ from gymnasium.wrappers import FrameStackObservation
 METRIC_PATH = "../artifacts/metrics/"
 
 
-def _info_for_env_idx(infos: dict[str, Any] | None, env_idx: int, num_envs: int) -> dict[str, Any] | None:
+def _info_for_env_idx(
+    infos: dict[str, Any] | None, env_idx: int, num_envs: int
+) -> dict[str, Any] | None:
     """Extract the info dict for a single sub-env from SyncVectorEnv batched infos."""
     if not infos:
         return None
@@ -57,7 +59,9 @@ def _aggregate_metrics(lst: list[float]) -> dict[str, float]:
     }
 
 
-def _print_summary_table(stats: dict[str, dict[str, float]], death_dist: dict[str, int]) -> None:
+def _print_summary_table(
+    stats: dict[str, dict[str, float]], death_dist: dict[str, int]
+) -> None:
     console = Console()
 
     # Create a table for metrics
@@ -171,10 +175,15 @@ def evaluate_agent(
     ) as pbar:
         while completed < num_episodes:
             # collect actions for each sub-env
-            actions = [agent.act(obs[i], _info_for_env_idx(infos, i, num_envs)) for i in range(num_envs)]
+            actions = [
+                agent.act(obs[i], _info_for_env_idx(infos, i, num_envs))
+                for i in range(num_envs)
+            ]
 
             if render_mode is RenderMode.HUMAN and num_envs >= 1:
-                setattr(env.envs[0], "mcts_panel", getattr(agent, "last_mcts_panel", None))
+                setattr(
+                    env.envs[0], "mcts_panel", getattr(agent, "last_mcts_panel", None)
+                )
 
             next_obs, rewards_arr, dones, truncs, infos = env.step(actions)
             ep_rewards += rewards_arr
@@ -202,14 +211,18 @@ def evaluate_agent(
                 metrics["final_length"].append(int(final_info.get("snake_length", 0)))
                 metrics["steps_per_apple"].append(steps / max(1, apples))
 
-                action_counts = final_info.get("action_counts", np.zeros(3, dtype=np.int32))
+                action_counts = final_info.get(
+                    "action_counts", np.zeros(3, dtype=np.int32)
+                )
                 total_steps = max(1, steps)
                 metrics["left_rate"].append(action_counts[0] / total_steps)
                 metrics["straight_rate"].append(action_counts[1] / total_steps)
                 metrics["right_rate"].append(action_counts[2] / total_steps)
 
                 if "available_head_space_ratio" in final_info:
-                    metrics["final_space_ratio"].append(float(final_info["available_head_space_ratio"]))
+                    metrics["final_space_ratio"].append(
+                        float(final_info["available_head_space_ratio"])
+                    )
 
                 death_reason = final_info.get("death_reason")
                 if death_reason:
@@ -259,7 +272,9 @@ def save_metrics(logs: list[dict], filepath: str) -> None:
     if not logs:
         return
 
-    filepath = METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
+    filepath = (
+        METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
+    )
     filepath_obj = Path(filepath)
     filepath_obj.parent.mkdir(parents=True, exist_ok=True)
 
@@ -269,3 +284,28 @@ def save_metrics(logs: list[dict], filepath: str) -> None:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(logs)
+
+
+def save_dict_of_lists_to_csv(data: dict[str, list[Any]], filepath: str) -> None:
+    """Save a dictionary of lists to a CSV file.
+
+    Args:
+        data: Dictionary where keys are column headers and values are lists of data.
+        filepath: Path where the CSV file will be saved.
+    """
+    if not data:
+        return
+
+    filepath = (
+        METRIC_PATH + filepath if not filepath.startswith(METRIC_PATH) else filepath
+    )
+    filepath_obj = Path(filepath)
+    filepath_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    headers = list(data.keys())
+    rows = zip(*data.values())
+
+    with open(filepath, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(headers)
+        writer.writerows(rows)

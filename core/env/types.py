@@ -57,14 +57,14 @@ class DeathReason(str, Enum):
 
 @dataclass(frozen=True)
 class RewardOptions:
-    eats_apple: float = 10.0
-    complete: float = 50.0
-    penalty_step: float = -0.1
-    penalty_loop: float = -1.0
-    death_wall: float = -10.0
-    death_self: float = -10.0
-    shaping_closer: float = 0.5
-    shaping_further: float = -0.5
+    eats_apple: float = 5.0
+    complete: float = 100.0     
+    penalty_step: float = -0.01  
+    penalty_loop: float = -0.1   
+    death_wall: float = -20.0     
+    death_self: float = -20.0     
+    shaping_closer: float = 0.1   
+    shaping_further: float = -0.1 
 
 
 DEFAULT_REWARD: Final = RewardOptions()

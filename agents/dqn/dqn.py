@@ -1,10 +1,11 @@
 from gymnasium.vector import VectorEnv
+from gymnasium import Wrapper
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import torch.optim as optim
-from typing import Optional, Dict
+from typing import Any, Dict
 from tqdm import tqdm
 from agents.base import Agent
 from agents.dqn.replay_buffer import ReplayBuffer
@@ -13,7 +14,8 @@ from util import log_and_save_progress
 
 class BaseDQNAgent(Agent):
     """
-    Base PyTorch DQN Agent with VectorEnv training support and integrated ReplayBuffer.
+    Base PyTorch DQN Agent with custom ReplayBuffer.
+    Designed for vectorized and frame-stacked gymnasium-compatible environment.
     """
 
     def __init__(
@@ -21,20 +23,9 @@ class BaseDQNAgent(Agent):
         q_net: nn.Module,
         target_net: nn.Module,
         optimizer: optim.Optimizer,
-        buffer_size: int = 100000,
-        batch_size: int = 64,
-        gamma: float = 0.99,
-        tau: float = 0.005,  # for soft update of target network
-        eps_init: float = 1.0,
-        eps_final: float = 0.05,
-        eps_decay: float = 0.1,
-        learning_starts: int = 1000,
-        train_freq: int = 1,
-        log_step: int = 5000,
-        gradient_steps: int = 1,
-        device: str = "cpu",
-        seed: int | None = None,
+        device: str = "auto",
         model_file: str = "dqn_base.pth",
+        seed: int | None = None,
     ):
         super().__init__(seed)
         self.q_net = q_net.to(device)
@@ -44,37 +35,34 @@ class BaseDQNAgent(Agent):
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 
-        self.batch_size = batch_size
-        self.gamma = gamma
-        self.tau = tau
-        self.buffer_size = buffer_size
-        self.log_step = log_step
-
-        self.eps = eps_init
-        self.eps_init = eps_init
-        self.eps_final = eps_final
-        self.eps_decay = eps_decay
-
-        self.learning_starts = learning_starts
-        self.train_freq = train_freq
-        self.gradient_steps = gradient_steps
-
-        self.device = device
+        if device not in ["cpu", "cuda"]:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
         self.seed = seed
         self.model_file = model_file
         self.replay_buffer: ReplayBuffer | None = None
+        self.eps = 1.0
 
     def act(self, state: np.ndarray, info: dict | None = None) -> np.ndarray:
-        n_envs = state.shape[0] if state.ndim > 1 and state.shape[0] > 1 else 1
+        is_unbatched = state.ndim in (1, 3)
+        if state.ndim == 4:
+            # Distinguish between batched grid (B, C, H, W) and unbatched framestacked (F, C, H, W)
+            for m in self.q_net.modules():
+                if isinstance(m, nn.Conv2d):
+                    # Unbatched framestacked grid has C at dim 1, while network expects F*C channels
+                    if state.shape[1] != m.in_channels:
+                        is_unbatched = True
+                    break
+
+        n_envs = 1 if is_unbatched else state.shape[0]
 
         if self.rng.random() < self.eps:
             return self.rng.integers(0, 3, size=(n_envs,))
 
         with torch.no_grad():
-            state_tensor = torch.as_tensor(
-                state, dtype=torch.float32, device=self.device
-            )
-            if n_envs == 1 and state_tensor.ndim in [1, 3]:
+            state_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device)
+            if is_unbatched:
                 state_tensor = state_tensor.unsqueeze(0)
 
             q_values = self.q_net(state_tensor)
@@ -82,7 +70,22 @@ class BaseDQNAgent(Agent):
 
         return actions
 
-    def train(self, env: VectorEnv, total_timesteps: int) -> Dict[str, list]:
+    def train(
+        self,
+        env: VectorEnv | Wrapper | Any,
+        total_timesteps: int,
+        log_step: int = 5000,
+        buffer_size: int = 100000,
+        batch_size: int = 64,
+        gamma: float = 0.99,
+        tau: float = 0.005,  # for soft update of target network
+        eps_init: float = 1.0,
+        eps_final: float = 0.05,
+        eps_decay: float = 0.1,
+        learning_starts: int = 1000,
+        train_freq: int = 1,
+        gradient_steps: int = 1,
+    ) -> Dict[str, list]:
         """
         Synchronous training loop adapted from Stable-Baselines3 paradigm.
         Takes a VectorEnv (SyncVectorEnv or AsyncVectorEnv) and steps through it.
@@ -95,12 +98,14 @@ class BaseDQNAgent(Agent):
 
         if not self.replay_buffer:
             self.replay_buffer = ReplayBuffer(
-                buffer_size=self.buffer_size,
+                buffer_size,
                 observe_shape=env.single_observation_space.shape,
                 n_envs=env.num_envs,
                 device=self.device,
                 seed=self.seed,
             )
+
+        self.eps = eps_init
 
         obs, _ = env.reset()
 
@@ -112,6 +117,7 @@ class BaseDQNAgent(Agent):
         current_lengths = np.zeros(env.num_envs)
 
         best_reward = -np.inf
+        decay_steps = max(1, int(total_timesteps * eps_decay))
 
         with tqdm(total=total_timesteps, desc="Parallel Training") as pbar:
             for step in range(total_timesteps):
@@ -138,25 +144,21 @@ class BaseDQNAgent(Agent):
                     current_lengths[idx] = 0
 
                 # Update exploration rate
-                decay_steps = max(1, int(total_timesteps * self.eps_decay))
                 decay_progress = min(1.0, step / decay_steps)
-                self.eps = (
-                    self.eps_init - (self.eps_init - self.eps_final) * decay_progress
-                )
+                self.eps = eps_init - (eps_init - eps_final) * decay_progress
 
                 # Train the network
-                if step > self.learning_starts and step % self.train_freq == 0:
-                    for _ in range(self.gradient_steps):
-                        loss = self._optimize()
+                if step > learning_starts and step % train_freq == 0:
+                    for _ in range(gradient_steps):
+                        loss = self._optimize(batch_size, gamma, tau)
                         if loss is not None:
                             losses.append(loss)
 
                 pbar.update(1)
 
-                # Periodically log best reward and save model
                 best_reward = log_and_save_progress(
                     step=step,
-                    log_step=self.log_step,
+                    log_step=log_step,
                     episode_rewards=episode_rewards,
                     best_reward=best_reward,
                     pbar=pbar,
@@ -170,45 +172,48 @@ class BaseDQNAgent(Agent):
             "losses": losses,
         }
 
-    def _optimize(self) -> Optional[float]:
-        if (
-            not self.replay_buffer
-            or self.replay_buffer.pos < self.batch_size
-            and not self.replay_buffer.full
-        ):
+    def _optimize(self, batch_size: int, gamma: float, tau: float) -> float | None:
+        if not self.replay_buffer or self.replay_buffer.pos < batch_size and not self.replay_buffer.full:
             return None
 
-        obs, actions, rewards, next_obs, dones = self.replay_buffer.sample(
-            self.batch_size
-        )
+        obs, actions, rewards, next_obs, dones = self.replay_buffer.sample(batch_size)
+
+        # Cast observations to float32 for PyTorch layers
+        obs = obs.float()
+        next_obs = next_obs.float()
+
+        # Ensure target shapes align to (Batch, 1) to avoid (B, B) broadcast bugs
+        actions = actions.long().unsqueeze(1) if actions.ndim == 1 else actions.long()
+        rewards = rewards.unsqueeze(1) if rewards.ndim == 1 else rewards
+        dones = dones.unsqueeze(1) if dones.ndim == 1 else dones
 
         q_values = self.q_net(obs)
         q_sa = q_values.gather(1, actions)
 
-        # Compute max Q'(s', a') with Target Network
+        # Double DQN (DDQN) computation for better stability over standard DQN
         with torch.no_grad():
+            next_actions = self.q_net(next_obs).argmax(dim=1, keepdim=True)
             next_q_values = self.target_net(next_obs)
-            max_next_q_sa = next_q_values.max(1, keepdim=True)[0]
-            target_q_values = rewards + (~dones).float() * self.gamma * max_next_q_sa
+            max_next_q_sa = next_q_values.gather(1, next_actions)
+            target_q_values = rewards.float() + (~dones).float() * gamma * max_next_q_sa
 
-        # Loss & Backprop
-        loss = F.mse_loss(q_sa, target_q_values)
+        # Huber Loss (Smooth L1) handles large penalties (-20) much better than MSE
+        loss = F.smooth_l1_loss(q_sa, target_q_values)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        # Update target network with Polyak soft update
-        for param, target_param in zip(
-            self.q_net.parameters(), self.target_net.parameters()
-        ):
-            target_param.data.lerp_(param.data, self.tau)
+        # Update target network with Polyak soft update, borrowed from DDPG
+        # Inspired by Stable-Baselines3 and this paper: https://arxiv.org/pdf/1509.02971
+        for param, target_param in zip(self.q_net.parameters(), self.target_net.parameters()):
+            target_param.data.lerp_(param.data, tau)
 
         return loss.item()
 
     def save(self, path: str) -> None:
-        path = self._modify_path(path)
         torch.save(self.q_net.state_dict(), path)
 
     def load(self, path: str) -> None:
+        self.eps = 0.0
         self.q_net.load_state_dict(torch.load(path, map_location=str(self.device)))
         self.target_net.load_state_dict(self.q_net.state_dict())
