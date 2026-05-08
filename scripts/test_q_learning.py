@@ -4,7 +4,7 @@ from core.utils import evaluate_agent
 
 
 def run_test():
-    agent = QLearningAgent(seed=67)
+    agent = QLearningAgent(seed=42)
     agent.load("./artifacts/models/q_learning_snake_best.pkl")
     evaluate_agent(
         agent,
@@ -12,7 +12,7 @@ def run_test():
         num_apples=2,
         num_episodes=3,
         render_mode=RenderMode.HUMAN,
-        seed=67,
+        seed=42,
         render_options=RenderOptions(agent_color=(190, 128, 250)),
     )
 
