@@ -9,9 +9,9 @@ def run_test():
         agent,
         num_obstacles=10,
         num_apples=2,
-        num_episodes=3,
-        render_mode=RenderMode.HUMAN,
-        seed=67,
+        num_episodes=20,
+        render_mode=None,
+        seed=42,
     )
 
 

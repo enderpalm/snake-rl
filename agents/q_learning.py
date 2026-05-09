@@ -28,7 +28,7 @@ class QLearningAgent(Agent):
 
     def _obs_to_state(self, obs: np.ndarray) -> int:
         # Partial obs (11 bits) to state index (0-2047)
-        return obs.dot(1 << np.arange(obs.size)[::-1])
+        return int(obs.dot(1 << np.arange(obs.size)[::-1]))
 
     def act(self, state: np.ndarray, info: Optional[dict] = None) -> Action:
         if self.rng.random() < self.epsilon:
@@ -50,6 +50,7 @@ class QLearningAgent(Agent):
         next_state_idx = self._obs_to_state(next_state)
 
         best_next_action = np.argmax(self.q_table[next_state_idx])
+        td_target = reward + (0 if done else self.gamma * self.q_table[next_state_idx][best_next_action])
         td_target = reward + (
             0 if done else self.gamma * self.q_table[next_state_idx][best_next_action]
         )

@@ -4,7 +4,7 @@ from core.utils import evaluate_agent
 
 
 def run_test():
-    ac_agent = ActorCriticAgent(state_dim=11, action_dim=3, seed=67)
+    ac_agent = ActorCriticAgent(state_dim=11, action_dim=3, seed=42)
 
     ac_agent.load("./artifacts/models/actor_critic_snake_best.pth")
 

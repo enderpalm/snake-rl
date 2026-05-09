@@ -17,7 +17,7 @@ def run_test():
             num_apples=2,
             num_episodes=3,
             render_mode=RenderMode.HUMAN,
-            seed=67,
+            seed=42,
             snapshot_engine_state=True,
         )
     finally:
