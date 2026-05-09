@@ -1,6 +1,5 @@
 from agents.actor_critic import ActorCriticAgent
-from core.env.core import RewardOptions
-from core.env.types import RenderMode, RenderOptions
+from core.env.types import RenderMode
 from core.utils import evaluate_agent
 
 
@@ -11,26 +10,13 @@ def run_test():
 
     evaluate_agent(
         ac_agent,
-        num_episodes=20,
-        num_apples=2,
         num_obstacles=10,
-        seed=42,
-        num_envs=16,
-        max_steps=10000,
+        num_apples=2,
+        num_episodes=3,
         render_mode=RenderMode.HUMAN,
-        render_options=RenderOptions(agent_color=(255, 197, 211)),
-        reward_options=RewardOptions(
-            eats_apple=24.0,
-            penalty_step=-0.01,
-            penalty_loop=-0.1,
-            death_wall=-20.0,
-            death_self=-20.0,
-            shaping_closer=0.1,
-            shaping_further=-0.1,
-            complete=100.0,
-        ),
+        seed=67,
+        snapshot_engine_state=True,
     )
-
 
 if __name__ == "__main__":
     run_test()
