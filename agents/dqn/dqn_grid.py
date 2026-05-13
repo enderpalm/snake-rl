@@ -9,8 +9,6 @@ class CNNQNet(nn.Module):
     """
     CNN Q-Network for Full Grid observations (with optional framestacking).
     Adapted from Nature DQN CNN architecture: https://arxiv.org/pdf/2201.07211
-
-    Uses AdaptiveMaxPool2d((5, 5)) for better generalization across grid sizes.
     """
 
     def __init__(
