@@ -35,7 +35,7 @@ class Snake:
         self.dir, self.alive = dir, True
         dy, dx = DIR_OFFSETS[dir]
         self.body: deque[Tuple[int, int]] = deque((start_pos[0] - dy * i, start_pos[1] - dx * i) for i in range(length))
-        self.recent_positions: deque[Tuple[int, int]] = deque(maxlen=20)
+        self.recent_positions: deque[Tuple[int, int, int]] = deque(maxlen=60)
         self.last_death_reason: DeathReason | None = None
         self.total_rewards: float = 0.0
         self.apples_eaten: int = 0
@@ -298,10 +298,15 @@ class SnakeEnv(gym.Env):
         if pure_movement and apples:
             closer = self._min_dist_to_apple() < dist_before
             reward += rewards.shaping_closer if closer else rewards.shaping_further
-            if new_head in snake.recent_positions:
-                reward += rewards.penalty_loop
-            snake.recent_positions.append(new_head)
-        elif hit_apple or not pure_movement:
+
+            loop_key = (new_head[0], new_head[1], snake.dir.value)
+            revisit_count = sum(1 for k in snake.recent_positions if k == loop_key)
+
+            if revisit_count >= 1:
+                reward += rewards.penalty_loop * revisit_count
+
+            snake.recent_positions.append(loop_key)
+        elif hit_apple:                        # only clear on apple eat
             snake.recent_positions.clear()
 
         snake.total_rewards += reward

@@ -50,7 +50,6 @@ class QLearningAgent(Agent):
         next_state_idx = self._obs_to_state(next_state)
 
         best_next_action = np.argmax(self.q_table[next_state_idx])
-        td_target = reward + (0 if done else self.gamma * self.q_table[next_state_idx][best_next_action])
         td_target = reward + (
             0 if done else self.gamma * self.q_table[next_state_idx][best_next_action]
         )

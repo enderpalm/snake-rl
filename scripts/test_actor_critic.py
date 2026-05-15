@@ -12,8 +12,8 @@ def run_test():
         ac_agent,
         num_obstacles=10,
         num_apples=2,
-        num_episodes=3,
-        render_mode=RenderMode.HUMAN,
+        num_episodes=1000,
+        render_mode=None,
         seed=67,
         snapshot_engine_state=True,
     )

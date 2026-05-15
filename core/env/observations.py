@@ -44,21 +44,17 @@ def observe_full_grid(env: "SnakeEnv") -> npt.NDArray[np.float32]:
     """
     Observes the full grid state. Consist of 4 channels:
     - Channel 0: Head (1.0)
-    - Channel 1: Body TTL (normalized by Total_Grid_Cells)
+    - Channel 1: Body (1.0)
     - Channel 2: Apples (1.0)
     - Channel 3: Obstacles/Walls (1.0)
     """
     grid_obs = np.zeros((4, env.height, env.width), dtype=np.float32)
-    total_cells = env.height * env.width
 
     if env.snake and env.snake.body:
         hr, hc = env.snake.body[0]
         grid_obs[0, hr, hc] = 1.0  # Head
-
-        snake_len = len(env.snake.body)
-        for i, (r, c) in enumerate(env.snake.body):
-            ttl = float(snake_len - i)
-            grid_obs[1, r, c] = ttl / total_cells  # Body TTL
+        for (r, c) in enumerate(env.snake.body):
+            grid_obs[1, r, c] = 1.0  # Body
 
     for r, c in env.apples:
         grid_obs[2, r, c] = 1.0

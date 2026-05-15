@@ -39,6 +39,7 @@ class BaseDQNAgent(Agent):
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
+        self.scaler = torch.amp.GradScaler()
         self.seed = seed
         self.model_file = model_file
         self.replay_buffer: ReplayBuffer | None = None
@@ -139,7 +140,9 @@ class BaseDQNAgent(Agent):
 
                 for idx in dones.nonzero()[0]:
                     episode_rewards.append(float(current_rewards[idx]))
-                    episode_lengths.append(float(current_lengths[idx]))
+                    # Use the final snake length from the info dict
+                    snake_len = infos["snake_length"][idx] if "snake_length" in infos else 0
+                    episode_lengths.append(float(snake_len))
                     current_rewards[idx] = 0
                     current_lengths[idx] = 0
 
@@ -160,6 +163,7 @@ class BaseDQNAgent(Agent):
                     step=step,
                     log_step=log_step,
                     episode_rewards=episode_rewards,
+                    episode_lengths=episode_lengths,
                     best_reward=best_reward,
                     pbar=pbar,
                     eps=self.eps,
@@ -187,21 +191,24 @@ class BaseDQNAgent(Agent):
         rewards = rewards.unsqueeze(1) if rewards.ndim == 1 else rewards
         dones = dones.unsqueeze(1) if dones.ndim == 1 else dones
 
-        q_values = self.q_net(obs)
-        q_sa = q_values.gather(1, actions)
+        with torch.autocast(device_type=self.device, dtype=torch.float16):
+            q_values = self.q_net(obs)
+            q_sa = q_values.gather(1, actions)
 
-        # Double DQN (DDQN) computation for better stability over standard DQN
-        with torch.no_grad():
-            next_actions = self.q_net(next_obs).argmax(dim=1, keepdim=True)
-            next_q_values = self.target_net(next_obs)
-            max_next_q_sa = next_q_values.gather(1, next_actions)
-            target_q_values = rewards.float() + (~dones).float() * gamma * max_next_q_sa
+            # Double DQN (DDQN) computation for better stability over standard DQN
+            with torch.no_grad():
+                next_actions = self.q_net(next_obs).argmax(dim=1, keepdim=True)
+                next_q_values = self.target_net(next_obs)
+                max_next_q_sa = next_q_values.gather(1, next_actions)
+                target_q_values = rewards.float() + (~dones).float() * gamma * max_next_q_sa
 
-        # Huber Loss (Smooth L1) handles large penalties (-20) much better than MSE
-        loss = F.smooth_l1_loss(q_sa, target_q_values)
+            # Huber Loss (Smooth L1) handles large penalties (-20) much better than MSE
+            loss = F.smooth_l1_loss(q_sa, target_q_values)
+
         self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
         # Update target network with Polyak soft update, borrowed from DDPG
         # Inspired by Stable-Baselines3 and this paper: https://arxiv.org/pdf/1509.02971
