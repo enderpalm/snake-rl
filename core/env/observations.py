@@ -53,7 +53,7 @@ def observe_full_grid(env: "SnakeEnv") -> npt.NDArray[np.float32]:
     if env.snake and env.snake.body:
         hr, hc = env.snake.body[0]
         grid_obs[0, hr, hc] = 1.0  # Head
-        for (r, c) in enumerate(env.snake.body):
+        for r, c in env.snake.body:
             grid_obs[1, r, c] = 1.0  # Body
 
     for r, c in env.apples:

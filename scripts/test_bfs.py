@@ -1,5 +1,7 @@
+from rich.markup import render
+
 from agents.bfs import BFSAgent
-from core.env.types import RenderMode
+from core.env.types import RenderMode, RenderOptions
 from core.utils import evaluate_agent
 
 
@@ -9,10 +11,11 @@ def run_test():
         agent,
         num_obstacles=10,
         num_apples=2,
-        num_episodes=3,
-        render_mode=RenderMode.HUMAN,
-        seed=67,
+        num_episodes=1000,
+        render_mode=None,
+        seed=42,
         snapshot_engine_state=True,
+        render_options=RenderOptions(agent_color=(190, 128, 250))
     )
 
 
